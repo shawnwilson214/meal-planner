@@ -666,6 +666,10 @@ Return ONLY the JSON, nothing else.`;
           "anthropic-dangerous-direct-browser-access": "true",
           "x-api-key": apiKey
         },
+        body: JSON.stringify({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
+          tools: [{ type: "web_search_20250305", name: "web_search" }],
           tool_choice: { type: "auto" },
           messages: [{ role: "user", content: prompt }]
         })
@@ -1028,91 +1032,6 @@ Return ONLY the JSON, nothing else.`;
             <div className="ssub">{recipes.length} recipes saved</div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 28 }}>
-
-              {/* API Key input */}
-              <div className="ibox" style={{ padding: "14px 18px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#b09060", textTransform: "uppercase", marginBottom: 5 }}>Anthropic API Key</div>
-                    <input
-                      className="ginput"
-                      type={showApiKey ? "text" : "password"}
-                      placeholder="sk-ant-..."
-                      value={apiKey}
-                      onChange={e => { setApiKey(e.target.value); localStorage.setItem("wk_apikey", e.target.value); }}
-                      style={{ fontSize: 12, letterSpacing: showApiKey ? "normal" : "2px", width: "100%" }}
-                    />
-                  </div>
-                  <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 9, flexShrink: 0, marginTop: 18 }} onClick={() => setShowApiKey(p => !p)}>
-                    {showApiKey ? "Hide" : "Show"}
-                  </button>
-                </div>
-                {!apiKey && <div style={{ marginTop: 6, fontSize: 10, fontStyle: "italic", color: "#907848" }}>Required for PDF, image, and URL recipe import.</div>}
-              </div>
-
-              {/* Image / PDF upload */}
-              <div className="ibox" style={{ padding: "22px", cursor: "pointer", borderStyle: "dashed", textAlign: "center", transition: "all 0.25s" }}
-                onClick={() => !imageLoading && imageInputRef.current.click()}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => {
-                  e.preventDefault();
-                  const f = e.dataTransfer.files[0];
-                  if (f && (f.type.startsWith("image/") || f.type === "application/pdf")) {
-                    handleImageUpload({ target: { files: [f], value: "" } });
-                  }
-                }}>
-                <input ref={imageInputRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={handleImageUpload} />
-                {imageLoading ? (
-                  <div>
-                    <div style={{ fontSize: 18, color: "#b8963c", animation: "spin 1.5s linear infinite", display: "inline-block", marginBottom: 6 }}>◆</div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#b8963c", textTransform: "uppercase" }}>Reading your recipe...</div>
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ fontSize: 22, marginBottom: 6 }}>
-                      <span style={{ color: "#b8963c", opacity: 0.5 }}>📷</span>
-                      <span style={{ color: "#b8963c", opacity: 0.5, marginLeft: 8 }}>📄</span>
-                    </div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#b09060", textTransform: "uppercase", marginBottom: 4 }}>Upload Recipe Photo or PDF</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#907848" }}>Click or drag an image, cookbook page, handwritten note, or PDF</div>
-                  </div>
-                )}
-                {imageError && <div style={{ marginTop: 8, fontSize: 11, color: "#c06060", fontStyle: "italic" }}>{imageError}</div>}
-              </div>
-
-              {/* Divider */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.12)" }} />
-                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#6a5c40", textTransform: "uppercase" }}>or</span>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.12)" }} />
-              </div>
-
-              {/* URL import */}
-              <div className="ibox" style={{ padding: "20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <span style={{ fontSize: 18, color: "#b8963c", opacity: 0.4 }}>🔗</span>
-                  <div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#8a7850", textTransform: "uppercase" }}>Import from URL</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 11, color: "#6a5c40", marginTop: 2 }}>AllRecipes, Food Network, NYT Cooking, any recipe site</div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <input className="ginput" placeholder="https://www.allrecipes.com/recipe/..." value={urlInput}
-                    onChange={e => setUrlInput(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleUrlExtract()} />
-                  <button className="btn-gold" onClick={handleUrlExtract} disabled={urlLoading} style={{ whiteSpace: "nowrap", flexShrink: 0, opacity: urlLoading ? 0.6 : 1 }}>
-                    {urlLoading ? <span style={{ animation: "spin 1.5s linear infinite", display: "inline-block" }}>◆</span> : "Extract"}
-                  </button>
-                </div>
-                {urlError && <div style={{ marginTop: 8, fontSize: 11, color: "#904040", fontStyle: "italic" }}>{urlError}</div>}
-              </div>
-
-              {/* Divider */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.08)" }} />
-                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#2e2818", textTransform: "uppercase" }}>or</span>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.08)" }} />
-              </div>
 
               {/* Manual */}
               <div className="ibox" style={{ padding: "20px" }}>
