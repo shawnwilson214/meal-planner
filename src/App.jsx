@@ -560,12 +560,15 @@ export default function App() {
   };
   const handleDragEnd = () => { setDragItem(null); setDragOver(null); };
 
-  // AI image upload
+  // AI file upload — handles images and PDFs
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     setImageError(""); setImageLoading(true);
-    setImagePreview(URL.createObjectURL(file));
+
+    const isPdf = file.type === "application/pdf";
+    if (!isPdf) setImagePreview(URL.createObjectURL(file));
+
     try {
       const base64 = await new Promise((res, rej) => {
         const reader = new FileReader();
@@ -573,25 +576,49 @@ export default function App() {
         reader.onerror = () => rej(new Error("Read failed"));
         reader.readAsDataURL(file);
       });
+
+      const mediaType = isPdf ? "application/pdf" : (file.type || "image/jpeg");
+      const sourceBlock = isPdf
+        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+        : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
+
+      const prompt = `Extract the recipe from this ${isPdf ? "PDF" : "image"} and return ONLY valid JSON, no markdown fences, no explanation:
+{"name":"Recipe Name","recipeType":"Entrée","notes":"any tips or serving suggestions","steps":["Step 1","Step 2"],"ingredients":[{"name":"ingredient","qty":"1","unit":"cup","category":"Produce"}]}
+Rules:
+- recipeType must be exactly "Entrée" or "Side"
+- unit must be one of: ${UNITS.join(", ")}
+- category must be one of: ${STORE_CATEGORIES.join(", ")}
+- Include ALL steps in order
+- qty as a string like "1", "1/2", "2.5"
+Return ONLY the JSON object.`;
+
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 1000,
-          messages: [{ role: "user", content: [
-            { type: "image", source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 } },
-            { type: "text", text: `Parse this recipe image. Return ONLY valid JSON, no markdown:\n{"name":"Recipe Name","recipeType":"Entrée","notes":"","steps":["Step 1...","Step 2..."],"ingredients":[{"name":"...","qty":"...","unit":"—","category":"..."}]}\nrecipeType must be "Entrée" or "Side". Extract all preparation steps. Categories: ${STORE_CATEGORIES.join(", ")}.` }
-          ]}]
+          model: "claude-sonnet-4-20250514", max_tokens: 4000,
+          messages: [{ role: "user", content: [sourceBlock, { type: "text", text: prompt }] }]
         })
       });
+
+      if (!response.ok) throw new Error(`API ${response.status}`);
       const data = await response.json();
-      const text = (data.content || []).map(b => b.text || "").join("");
-      const parsed = JSON.parse(text.replace(/```json|```/g, "").trim());
+      const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+      const match = text.replace(/```json|```/g, "").match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("No JSON");
+      const parsed = JSON.parse(match[0]);
       if (parsed.name && Array.isArray(parsed.ingredients)) {
         setPendingRecipe({ ...parsed, id: uid() });
         setImagePreview(null);
-      } else setImageError("Could not parse recipe. Try a clearer photo.");
-    } catch { setImageError("Something went wrong. Please try again."); }
-    finally { setImageLoading(false); e.target.value = ""; }
+      } else {
+        setImageError("Could not find a recipe in that file. Try a clearer photo or a different page.");
+      }
+    } catch (err) {
+      console.error("File upload error:", err);
+      setImageError("Something went wrong reading that file. Please try again.");
+    } finally {
+      setImageLoading(false);
+      e.target.value = "";
+    }
   };
 
   // AI URL extract
@@ -982,12 +1009,18 @@ Return ONLY the JSON, nothing else.`;
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 28 }}>
 
-              {/* Image upload */}
+              {/* Image / PDF upload */}
               <div className="ibox" style={{ padding: "22px", cursor: "pointer", borderStyle: "dashed", textAlign: "center", transition: "all 0.25s" }}
                 onClick={() => !imageLoading && imageInputRef.current.click()}
                 onDragOver={e => e.preventDefault()}
-                onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f?.type.startsWith("image/")) handleImageUpload({ target: { files: [f], value: "" } }); }}>
-                <input ref={imageInputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={handleImageUpload} />
+                onDrop={e => {
+                  e.preventDefault();
+                  const f = e.dataTransfer.files[0];
+                  if (f && (f.type.startsWith("image/") || f.type === "application/pdf")) {
+                    handleImageUpload({ target: { files: [f], value: "" } });
+                  }
+                }}>
+                <input ref={imageInputRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={handleImageUpload} />
                 {imageLoading ? (
                   <div>
                     <div style={{ fontSize: 18, color: "#b8963c", animation: "spin 1.5s linear infinite", display: "inline-block", marginBottom: 6 }}>◆</div>
@@ -995,12 +1028,15 @@ Return ONLY the JSON, nothing else.`;
                   </div>
                 ) : (
                   <div>
-                    <div style={{ fontSize: 22, color: "#b8963c", opacity: 0.4, marginBottom: 6 }}>📷</div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#8a7850", textTransform: "uppercase", marginBottom: 4 }}>Upload Recipe Photo</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#6a5c40" }}>Click or drag any recipe card, cookbook page, or handwritten note</div>
+                    <div style={{ fontSize: 22, marginBottom: 6 }}>
+                      <span style={{ color: "#b8963c", opacity: 0.5 }}>📷</span>
+                      <span style={{ color: "#b8963c", opacity: 0.5, marginLeft: 8 }}>📄</span>
+                    </div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#b09060", textTransform: "uppercase", marginBottom: 4 }}>Upload Recipe Photo or PDF</div>
+                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#907848" }}>Click or drag an image, cookbook page, handwritten note, or PDF</div>
                   </div>
                 )}
-                {imageError && <div style={{ marginTop: 8, fontSize: 11, color: "#904040", fontStyle: "italic" }}>{imageError}</div>}
+                {imageError && <div style={{ marginTop: 8, fontSize: 11, color: "#c06060", fontStyle: "italic" }}>{imageError}</div>}
               </div>
 
               {/* Divider */}
