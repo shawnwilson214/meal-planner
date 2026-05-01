@@ -277,7 +277,7 @@ const css = `
 `;
 
 // Proper collapsible recipe card using ref-measured height
-function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, onEdit, onDelete, UNITS, STORE_CATEGORIES }) {
+function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, onEdit, onDelete, isEditing, UNITS, STORE_CATEGORIES }) {
   const bodyRef = useRef(null);
   const type = recipe.recipeType || "Entrée";
 
@@ -296,7 +296,7 @@ function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, on
             {printSelected && <span style={{ color: "#b8963c", fontSize: 9 }}>✓</span>}
           </div>
           <button className="btn-ghost" style={{ padding: "3px 10px", fontSize: 9 }} onClick={onEdit}>Edit</button>
-          <button className="btn-danger" style={{ padding: "3px 8px", fontSize: 9 }} onClick={onDelete}>✕</button>
+          {isEditing && <button className="btn-danger" style={{ padding: "3px 8px", fontSize: 9 }} onClick={onDelete}>✕</button>}
           <span className={`rcard-toggle ${isOpen ? "open" : ""}`}>▼</span>
         </div>
       </div>
@@ -348,7 +348,9 @@ export default function App() {
   const [tab, setTab] = useState("planner");
   const [editMode, setEditMode] = useState(false);
   const [recipes, setRecipes] = useState(SAMPLE_RECIPES);
-  const [collapsedCards, setCollapsedCards] = useState({});
+  const [collapsedCards, setCollapsedCards] = useState(() =>
+    Object.fromEntries(SAMPLE_RECIPES.map(r => [r.id, true]))
+  );
   const [printSelected, setPrintSelected] = useState({});
   const [restaurants, setRestaurants] = useState(SAMPLE_RESTAURANTS);
   const [newRestaurant, setNewRestaurant] = useState("");
@@ -458,7 +460,7 @@ export default function App() {
       @media print{body{padding:20px 32px;}@page{margin:0.5in;size:letter portrait;}}
     </style></head><body>
       <h1>The Wilson's Kitchen</h1>
-      <div class="sub">Thornton, Colorado</div>
+
       <div class="date">${date}</div>
       <div class="divider"></div>
       ${Object.entries(grouped).map(([cat, items]) => `
@@ -510,7 +512,7 @@ export default function App() {
       .notes-txt{font-style:italic;font-size:13px;color:#5a4030;line-height:1.5;white-space:pre-wrap;}
       @media print{body{padding:20px 32px;}@page{margin:0.5in;size:letter portrait;}.recipe{page-break-inside:avoid;}}
     </style></head><body>
-      <div class="site-hdr"><h1>The Wilson's Kitchen</h1><div class="sub">Thornton, Colorado</div></div>
+      <div class="site-hdr"><h1>The Wilson's Kitchen</h1></div>
       ${selected.map(r => `
         <div class="recipe">
           <div class="recipe-name">${r.name}</div>
@@ -593,7 +595,11 @@ Rules:
 Return ONLY the JSON object.`;
 
       const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST", headers: {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514", max_tokens: 4000,
           messages: [{ role: "user", content: [sourceBlock, { type: "text", text: prompt }] }]
@@ -647,7 +653,11 @@ Return ONLY the JSON, nothing else.`;
 
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true"
+        },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 4000,
@@ -674,7 +684,11 @@ Return ONLY the JSON, nothing else.`;
         // Make a second call with the tool result (we pass the URL as the search query result)
         const response2 = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "anthropic-version": "2023-06-01",
+            "anthropic-dangerous-direct-browser-access": "true"
+          },
           body: JSON.stringify({
             model: "claude-sonnet-4-20250514",
             max_tokens: 4000,
@@ -743,6 +757,7 @@ Return ONLY the JSON, nothing else.`;
   const savePendingRecipe = () => {
     if (!pendingRecipe?.name?.trim()) return;
     setRecipes(prev => [...prev, pendingRecipe]);
+    setCollapsedCards(prev => ({ ...prev, [pendingRecipe.id]: true }));
     setPendingRecipe(null);
   };
 
@@ -887,7 +902,7 @@ Return ONLY the JSON, nothing else.`;
 
       <header className="header">
         <div className="logo">The Wilson's Kitchen</div>
-        <div className="logo-sub">Thornton, Colorado</div>
+
         <div className="divider">
           <div className="divider-line" />
           <span style={{ color: "#b8963c", fontSize: 8 }}>◆</span>
@@ -1359,6 +1374,7 @@ Return ONLY the JSON, nothing else.`;
                           onPrintToggle={() => setPrintSelected(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}
                           onEdit={() => { setPendingRecipe(null); startEditRecipe(recipe); }}
                           onDelete={() => setRecipes(p => p.filter(r => r.id !== recipe.id))}
+                          isEditing={isEditing}
                           UNITS={UNITS}
                           STORE_CATEGORIES={STORE_CATEGORIES}
                         />
