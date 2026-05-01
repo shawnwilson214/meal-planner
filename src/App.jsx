@@ -219,7 +219,7 @@ const css = `
   .flbl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b09060;text-transform:uppercase;margin-bottom:5px;}
 
   /* RECIPE CARDS */
-  .rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .rgrid{display:grid;grid-template-columns:1fr;gap:16px;}
   .rcard{background:linear-gradient(135deg,#191410,#101008);border:1px solid rgba(180,150,60,0.18);padding:18px;transition:border-color 0.25s;}
   .rcard:hover{border-color:rgba(180,150,60,0.4);}
   .rname{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;font-weight:300;color:#f0e4c0;margin-bottom:6px;}
@@ -372,6 +372,8 @@ export default function App() {
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState("");
   const [newRecipe, setNewRecipe] = useState({ name: "", recipeType: "Entrée", notes: "", prepSteps: [""], cookSteps: [""], ingredients: [{ name: "", qty: "", unit: "—", category: "Produce" }] });
+  const [apiKey, setApiKey] = useState(() => localStorage.getItem("wk_apikey") || "");
+  const [showApiKey, setShowApiKey] = useState(false);
   const [showAddRecipe, setShowAddRecipe] = useState(false);
   const [pendingRecipe, setPendingRecipe] = useState(null); // recipe awaiting review/edit before save
   const [editingRecipe, setEditingRecipe] = useState(null); // existing recipe being edited
@@ -566,6 +568,7 @@ export default function App() {
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!apiKey.trim()) { setImageError("Please enter your Anthropic API key above first."); return; }
     setImageError(""); setImageLoading(true);
 
     const isPdf = file.type === "application/pdf";
@@ -598,7 +601,8 @@ Return ONLY the JSON object.`;
         method: "POST", headers: {
           "Content-Type": "application/json",
           "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
+          "anthropic-dangerous-direct-browser-access": "true",
+          "x-api-key": apiKey
         },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514", max_tokens: 4000,
@@ -659,12 +663,9 @@ Return ONLY the JSON, nothing else.`;
         headers: {
           "Content-Type": "application/json",
           "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true"
+          "anthropic-dangerous-direct-browser-access": "true",
+          "x-api-key": apiKey
         },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 4000,
-          tools: [{ type: "web_search_20250305", name: "web_search" }],
           tool_choice: { type: "auto" },
           messages: [{ role: "user", content: prompt }]
         })
@@ -690,7 +691,8 @@ Return ONLY the JSON, nothing else.`;
           headers: {
             "Content-Type": "application/json",
             "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true"
+            "anthropic-dangerous-direct-browser-access": "true",
+            "x-api-key": apiKey
           },
           body: JSON.stringify({
             model: "claude-sonnet-4-20250514",
@@ -1026,6 +1028,27 @@ Return ONLY the JSON, nothing else.`;
             <div className="ssub">{recipes.length} recipes saved</div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 28 }}>
+
+              {/* API Key input */}
+              <div className="ibox" style={{ padding: "14px 18px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#b09060", textTransform: "uppercase", marginBottom: 5 }}>Anthropic API Key</div>
+                    <input
+                      className="ginput"
+                      type={showApiKey ? "text" : "password"}
+                      placeholder="sk-ant-..."
+                      value={apiKey}
+                      onChange={e => { setApiKey(e.target.value); localStorage.setItem("wk_apikey", e.target.value); }}
+                      style={{ fontSize: 12, letterSpacing: showApiKey ? "normal" : "2px", width: "100%" }}
+                    />
+                  </div>
+                  <button className="btn-ghost" style={{ padding: "5px 10px", fontSize: 9, flexShrink: 0, marginTop: 18 }} onClick={() => setShowApiKey(p => !p)}>
+                    {showApiKey ? "Hide" : "Show"}
+                  </button>
+                </div>
+                {!apiKey && <div style={{ marginTop: 6, fontSize: 10, fontStyle: "italic", color: "#907848" }}>Required for PDF, image, and URL recipe import.</div>}
+              </div>
 
               {/* Image / PDF upload */}
               <div className="ibox" style={{ padding: "22px", cursor: "pointer", borderStyle: "dashed", textAlign: "center", transition: "all 0.25s" }}
@@ -1400,10 +1423,11 @@ Return ONLY the JSON, nothing else.`;
             {/* Add manual item */}
             <div style={{ padding: "18px 20px", border: "1px solid rgba(180,150,60,0.12)", background: "rgba(180,150,60,0.02)", marginBottom: 20 }}>
               <div className="flbl" style={{ marginBottom: 10 }}>Add Item Manually</div>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 80px 120px 1.5fr auto", gap: 10, alignItems: "end" }}>
-                <input className="ginput" placeholder="Item name..." value={newManualItem.name}
-                  onChange={e => setNewManualItem(p => ({ ...p, name: e.target.value }))}
-                  onKeyDown={e => e.key === "Enter" && addManualItem()} />
+              <input className="ginput" placeholder="Item name..." value={newManualItem.name}
+                onChange={e => setNewManualItem(p => ({ ...p, name: e.target.value }))}
+                onKeyDown={e => e.key === "Enter" && addManualItem()}
+                style={{ marginBottom: 10 }} />
+              <div style={{ display: "grid", gridTemplateColumns: "70px 1fr 1fr auto", gap: 8, alignItems: "end" }}>
                 <input className="ginput" placeholder="Qty" value={newManualItem.qty}
                   onChange={e => setNewManualItem(p => ({ ...p, qty: e.target.value }))} />
                 <select className="gsel" value={newManualItem.unit}
