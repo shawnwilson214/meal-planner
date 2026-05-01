@@ -599,25 +599,95 @@ export default function App() {
     const url = urlInput.trim(); if (!url) return;
     setUrlError(""); setUrlLoading(true);
     try {
+      // Step 1: fetch the page content via Claude's web_search tool in agentic mode
+      // We use a two-turn approach: first turn asks Claude to fetch and extract,
+      // using the URL as a document source in the message
+      const prompt = `You are a recipe extraction assistant. The user wants to import a recipe from this URL: ${url}
+
+Please extract the complete recipe and return ONLY a valid JSON object with no markdown fences, no explanation, nothing else — just the raw JSON:
+
+{"name":"Recipe Name","recipeType":"Entrée","notes":"any tips or notes","steps":["Step 1","Step 2"],"ingredients":[{"name":"ingredient name","qty":"1","unit":"cup","category":"Produce"}]}
+
+Rules:
+- recipeType must be exactly "Entrée" or "Side"
+- unit must be one of: ${UNITS.join(", ")}
+- category must be one of: ${STORE_CATEGORIES.join(", ")}
+- Include ALL steps in order (prep + cooking combined)
+- qty should be a number or fraction as a string like "1", "1/2", "2.5"
+- If you cannot access the URL, make your best guess based on the URL itself or return {"error":"cannot_fetch"}
+
+Return ONLY the JSON, nothing else.`;
+
       const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: { "Content-Type": "application/json" },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 1000,
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 4000,
           tools: [{ type: "web_search_20250305", name: "web_search" }],
-          messages: [{ role: "user", content: `Fetch the recipe at: ${url}\n\nReturn ONLY valid JSON, no markdown:\n{"name":"Recipe Name","recipeType":"Entrée","notes":"","steps":["Step 1...","Step 2..."],"ingredients":[{"name":"...","qty":"...","unit":"—","category":"..."}]}\nrecipeType must be "Entrée" or "Side". Extract all preparation and cooking steps. Categories: ${STORE_CATEGORIES.join(", ")}.` }]
+          tool_choice: { type: "auto" },
+          messages: [{ role: "user", content: prompt }]
         })
       });
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        throw new Error(err?.error?.message || `API error ${response.status}`);
+      }
+
       const data = await response.json();
-      const text = (data.content || []).map(b => b.text || "").join("");
-      const match = text.replace(/```json|```/g, "").match(/\{[\s\S]*\}/);
-      if (!match) throw new Error();
+
+      // Handle multi-turn if Claude used web_search tool
+      let finalText = "";
+      if (data.stop_reason === "tool_use") {
+        // Claude wants to search — run the tool use loop
+        const toolUseBlock = data.content.find(b => b.type === "tool_use");
+        if (!toolUseBlock) throw new Error("No tool use block");
+
+        // Make a second call with the tool result (we pass the URL as the search query result)
+        const response2 = await fetch("https://api.anthropic.com/v1/messages", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 4000,
+            tools: [{ type: "web_search_20250305", name: "web_search" }],
+            messages: [
+              { role: "user", content: prompt },
+              { role: "assistant", content: data.content },
+              { role: "user", content: [{ type: "tool_result", tool_use_id: toolUseBlock.id, content: `Please extract the recipe from ${url} and return only JSON as instructed.` }] }
+            ]
+          })
+        });
+        const data2 = await response2.json();
+        finalText = (data2.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+      } else {
+        finalText = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+      }
+
+      // Parse JSON from the response
+      const cleaned = finalText.replace(/```json|```/g, "").trim();
+      const match = cleaned.match(/\{[\s\S]*\}/);
+      if (!match) throw new Error("No JSON found in response");
+
       const parsed = JSON.parse(match[0]);
-      if (parsed.name && Array.isArray(parsed.ingredients)) {
-        setPendingRecipe({ ...parsed, id: uid() });
-        setUrlInput("");
-      } else setUrlError("No recipe found at that URL.");
-    } catch { setUrlError("Could not extract recipe. Check the URL and try again."); }
-    finally { setUrlLoading(false); }
+      if (parsed.error === "cannot_fetch") {
+        setUrlError("Couldn't access that URL. Try copying the recipe text and using the manual entry form instead.");
+        return;
+      }
+      if (!parsed.name || !Array.isArray(parsed.ingredients)) {
+        setUrlError("No recipe found at that URL. Make sure it links directly to a recipe page.");
+        return;
+      }
+
+      setPendingRecipe({ ...parsed, id: uid() });
+      setUrlInput("");
+    } catch (e) {
+      console.error("URL extract error:", e);
+      setUrlError("Could not extract recipe. Make sure the URL goes directly to a recipe page and try again.");
+    } finally {
+      setUrlLoading(false);
+    }
   };
 
   const saveNewRecipe = () => {
