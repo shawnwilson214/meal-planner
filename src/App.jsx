@@ -581,7 +581,7 @@ export default function App() {
 
       const mediaType = isPdf ? "application/pdf" : (file.type || "image/jpeg");
       const sourceBlock = isPdf
-        ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: base64 } }
+        ? { type: "document", title: file.name || "recipe.pdf", source: { type: "base64", media_type: "application/pdf", data: base64 } }
         : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
 
       const prompt = `Extract the recipe from this ${isPdf ? "PDF" : "image"} and return ONLY valid JSON, no markdown fences, no explanation:
@@ -606,7 +606,10 @@ Return ONLY the JSON object.`;
         })
       });
 
-      if (!response.ok) throw new Error(`API ${response.status}`);
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(`API ${response.status}: ${errData?.error?.message || "unknown error"}`);
+      }
       const data = await response.json();
       const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
       const match = text.replace(/```json|```/g, "").match(/\{[\s\S]*\}/);
@@ -620,7 +623,7 @@ Return ONLY the JSON object.`;
       }
     } catch (err) {
       console.error("File upload error:", err);
-      setImageError("Something went wrong reading that file. Please try again.");
+      setImageError(`Something went wrong: ${err.message}`);
     } finally {
       setImageLoading(false);
       e.target.value = "";
