@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 
 const STORE_CATEGORIES = [
   "Produce","Meat & Seafood","Dairy & Eggs","Bakery & Bread",
@@ -130,138 +130,219 @@ const css = `
   .app::before{content:'';position:fixed;inset:0;background:radial-gradient(ellipse 60% 40% at 50% 0%,rgba(180,140,60,0.08) 0%,transparent 70%);pointer-events:none;z-index:0;}
 
   /* HEADER */
-  .header{position:relative;z-index:10;text-align:center;padding:36px 24px 24px;border-bottom:1px solid rgba(180,150,60,0.15);background:linear-gradient(180deg,rgba(18,14,9,0.99) 0%,rgba(14,12,9,0.96) 100%);}
+  .header{position:relative;z-index:10;text-align:center;padding:36px 24px 24px;border-bottom:1px solid rgba(180,150,60,0.2);background:linear-gradient(180deg,rgba(18,14,9,0.99) 0%,rgba(14,12,9,0.96) 100%);}
   .logo{font-family:'Cinzel',serif;font-size:clamp(24px,4vw,44px);font-weight:700;color:#d4a843;letter-spacing:5px;text-shadow:0 0 30px rgba(212,168,67,0.2);}
-  .logo-sub{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#6a5c38;letter-spacing:3px;margin-top:5px;}
+  .logo-sub{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#8a7a50;letter-spacing:3px;margin-top:5px;}
   .divider{display:flex;align-items:center;gap:14px;margin:14px auto;max-width:260px;}
   .divider-line{flex:1;height:1px;background:linear-gradient(90deg,transparent,rgba(180,150,60,0.5),transparent);}
   .nav{display:flex;justify-content:center;gap:0;margin-top:18px;}
-  .nav-btn{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2.5px;padding:9px 24px;border:1px solid transparent;background:transparent;color:#5a4e30;cursor:pointer;transition:all 0.25s;text-transform:uppercase;}
-  .nav-btn:hover{color:#c8a030;}
-  .nav-btn.active{border-color:rgba(180,150,60,0.3);color:#d4a843;background:rgba(180,150,60,0.04);}
+  .nav-btn{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2.5px;padding:9px 24px;border:1px solid transparent;background:transparent;color:#a09060;cursor:pointer;transition:all 0.25s;text-transform:uppercase;}
+  .nav-btn:hover{color:#e0b84a;}
+  .nav-btn.active{border-color:rgba(180,150,60,0.5);color:#f5d060;background:rgba(180,150,60,0.1);}
   .badge{display:inline-block;background:#b8963c;color:#0e0c09;border-radius:50%;width:16px;height:16px;font-size:8px;line-height:16px;text-align:center;margin-left:5px;}
 
   .main{max-width:1100px;margin:0 auto;padding:40px 20px;position:relative;z-index:1;}
 
   /* EDIT BAR */
-  .edit-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;padding:14px 20px;border:1px solid rgba(180,150,60,0.15);background:rgba(180,150,60,0.03);}
-  .edit-bar-title{font-family:'Cinzel',serif;font-size:9px;letter-spacing:3px;color:#5a4e30;text-transform:uppercase;}
-  .edit-bar-note{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:12px;color:#3a3020;margin-top:2px;}
-  .edit-mode-strip{background:rgba(180,150,60,0.06);border:1px solid rgba(180,150,60,0.25);}
+  .edit-bar{display:flex;justify-content:space-between;align-items:center;margin-bottom:32px;padding:14px 20px;border:1px solid rgba(180,150,60,0.2);background:rgba(180,150,60,0.04);}
+  .edit-bar-title{font-family:'Cinzel',serif;font-size:9px;letter-spacing:3px;color:#d4a843;text-transform:uppercase;}
+  .edit-bar-note{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#a09060;margin-top:2px;}
+  .edit-mode-strip{background:rgba(180,150,60,0.08);border:1px solid rgba(180,150,60,0.3);}
 
   /* BUTTONS */
-  .btn-gold{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;padding:10px 24px;background:transparent;border:1px solid #b8963c;color:#d4a843;cursor:pointer;transition:all 0.25s;}
-  .btn-gold:hover{background:rgba(180,150,60,0.1);box-shadow:0 0 16px rgba(180,150,60,0.1);}
-  .btn-ghost{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:9px 18px;background:transparent;border:1px solid rgba(180,150,60,0.2);color:#6a5c38;cursor:pointer;transition:all 0.25s;}
-  .btn-ghost:hover{border-color:#b8963c;color:#d4a843;}
-  .btn-danger{font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;padding:8px 14px;background:transparent;border:1px solid rgba(180,60,60,0.22);color:#7a4040;cursor:pointer;transition:all 0.2s;}
-  .btn-danger:hover{border-color:rgba(180,60,60,0.5);color:#b06060;}
-  .btn-save{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;padding:10px 28px;background:rgba(180,150,60,0.12);border:1px solid #b8963c;color:#d4a843;cursor:pointer;transition:all 0.25s;}
-  .btn-save:hover{background:rgba(180,150,60,0.2);}
+  .btn-gold{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;padding:10px 24px;background:transparent;border:1px solid #b8963c;color:#e0b848;cursor:pointer;transition:all 0.25s;}
+  .btn-gold:hover{background:rgba(180,150,60,0.15);box-shadow:0 0 16px rgba(180,150,60,0.15);}
+  .btn-ghost{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2px;text-transform:uppercase;padding:9px 18px;background:transparent;border:1px solid rgba(180,150,60,0.3);color:#b09050;cursor:pointer;transition:all 0.25s;}
+  .btn-ghost:hover{border-color:#b8963c;color:#e0b848;}
+  .btn-danger{font-family:'Cinzel',serif;font-size:9px;letter-spacing:1px;padding:8px 14px;background:transparent;border:1px solid rgba(180,60,60,0.35);color:#c06060;cursor:pointer;transition:all 0.2s;}
+  .btn-danger:hover{border-color:rgba(180,60,60,0.65);color:#e08080;}
+  .btn-save{font-family:'Cinzel',serif;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;padding:10px 28px;background:rgba(180,150,60,0.15);border:1px solid #b8963c;color:#f0c848;cursor:pointer;transition:all 0.25s;}
+  .btn-save:hover{background:rgba(180,150,60,0.25);}
 
-  /* MENU VIEW — printed menu feel */
+  /* MENU VIEW */
   .menu-view{border:1px solid rgba(180,150,60,0.2);background:linear-gradient(160deg,#1a1510,#121009);}
-  .menu-day{border-bottom:1px solid rgba(180,150,60,0.1);}
+  .menu-day{border-bottom:1px solid rgba(180,150,60,0.12);}
   .menu-day:last-child{border-bottom:none;}
   .menu-day-header{display:flex;align-items:center;gap:0;padding:0;}
-  .menu-day-name{font-family:'Cinzel',serif;font-size:11px;letter-spacing:3px;color:#b8963c;text-transform:uppercase;width:120px;flex-shrink:0;padding:18px 20px;border-right:1px solid rgba(180,150,60,0.1);}
+  .menu-day-name{font-family:'Cinzel',serif;font-size:11px;letter-spacing:3px;color:#d4a843;text-transform:uppercase;width:120px;flex-shrink:0;padding:18px 20px;border-right:1px solid rgba(180,150,60,0.12);}
   .menu-meals{display:flex;flex:1;flex-wrap:wrap;}
-  .menu-meal{flex:1;min-width:200px;padding:16px 20px;border-right:1px solid rgba(180,150,60,0.06);}
+  .menu-meal{flex:1;min-width:200px;padding:16px 20px;border-right:1px solid rgba(180,150,60,0.08);}
   .menu-meal:last-child{border-right:none;}
-  .menu-meal-title{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#4a3e28;text-transform:uppercase;margin-bottom:10px;}
+  .menu-meal-title{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b09060;text-transform:uppercase;margin-bottom:10px;}
   .menu-entry{margin-bottom:4px;}
-  .menu-entry-course{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1.5px;color:#3a3020;text-transform:uppercase;margin-bottom:1px;}
-  .menu-entry-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:#c8b88a;line-height:1.2;}
-  .menu-entry-name.dine{color:#b8963c;}
-  .menu-empty{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#2e2818;}
+  .menu-entry-course{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1.5px;color:#907848;text-transform:uppercase;margin-bottom:1px;}
+  .menu-entry-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:#e0d0a8;line-height:1.2;}
+  .menu-entry-name.dine{color:#d4a843;}
+  .menu-empty{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#5a5038;}
 
   /* EDIT GRID */
   .edit-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:rgba(180,150,60,0.1);border:1px solid rgba(180,150,60,0.15);}
   .edit-col{background:#0e0c09;}
-  .edit-col-hdr{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b8963c;text-align:center;padding:12px 6px 8px;border-bottom:1px solid rgba(180,150,60,0.1);text-transform:uppercase;}
-  .edit-slot{padding:8px 6px;border-bottom:1px solid rgba(180,150,60,0.06);}
+  .edit-col-hdr{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#d4a843;text-align:center;padding:12px 6px 8px;border-bottom:1px solid rgba(180,150,60,0.12);text-transform:uppercase;}
+  .edit-slot{padding:8px 6px;border-bottom:1px solid rgba(180,150,60,0.07);}
   .edit-slot:last-child{border-bottom:none;}
-  .edit-slot-lbl{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:9px;color:#3a3020;margin-bottom:4px;text-align:center;}
-  .course-lbl{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1.5px;color:#3a3020;text-transform:uppercase;margin-top:5px;margin-bottom:2px;}
-  .msel{width:100%;background:rgba(180,150,60,0.04);border:1px solid rgba(180,150,60,0.12);color:#b8a880;font-family:'Cormorant Garamond',serif;font-size:10px;padding:4px 3px;cursor:pointer;outline:none;appearance:none;text-align:center;}
-  .msel:focus{border-color:rgba(180,150,60,0.4);}
-  .rest-sel{border-color:rgba(180,150,60,0.25);background:rgba(180,150,60,0.06);color:#b8963c;}
+  .edit-slot-lbl{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:9px;color:#a09060;margin-bottom:4px;text-align:center;}
+  .course-lbl{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1.5px;color:#907848;text-transform:uppercase;margin-top:5px;margin-bottom:2px;}
+  .msel{width:100%;background:#1e1a12;border:1px solid rgba(180,150,60,0.2);color:#e8dfc8;font-family:'Cormorant Garamond',serif;font-size:10px;padding:4px 3px;cursor:pointer;outline:none;appearance:none;text-align:center;}
+  .msel option{background:#1e1a12;color:#e8dfc8;}
+  .msel:focus{border-color:rgba(180,150,60,0.5);}
+  .rest-sel{border-color:rgba(180,150,60,0.3);background:#221d10;color:#d4a843;}
+  .rest-sel option{background:#221d10;color:#d4a843;}
   .extra-row{display:flex;align-items:center;gap:2px;margin-top:3px;}
-  .add-extra{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1px;color:#3a3020;background:transparent;border:1px dashed rgba(180,150,60,0.12);padding:2px 4px;cursor:pointer;width:100%;margin-top:3px;transition:all 0.2s;text-align:center;}
-  .add-extra:hover{border-color:rgba(180,150,60,0.3);color:#b8963c;}
-  .rmv-btn{background:transparent;border:none;color:#4a2828;cursor:pointer;font-size:9px;padding:0 2px;flex-shrink:0;line-height:1;}
-  .rmv-btn:hover{color:#c06060;}
+  .add-extra{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1px;color:#907848;background:transparent;border:1px dashed rgba(180,150,60,0.2);padding:2px 4px;cursor:pointer;width:100%;margin-top:3px;transition:all 0.2s;text-align:center;}
+  .add-extra:hover{border-color:rgba(180,150,60,0.45);color:#d4a843;}
+  .rmv-btn{background:transparent;border:none;color:#904040;cursor:pointer;font-size:9px;padding:0 2px;flex-shrink:0;line-height:1;}
+  .rmv-btn:hover{color:#e06060;}
 
   /* SHOPPING LIST */
-  .shop-list{border:1px solid rgba(180,150,60,0.14);background:linear-gradient(160deg,#121009,#0d0b07);}
-  .cathdr{font-family:'Cinzel',serif;font-size:8px;letter-spacing:4px;color:#b8963c;text-transform:uppercase;padding:18px 16px 7px;border-top:1px solid rgba(180,150,60,0.08);}
+  .shop-list{border:1px solid rgba(180,150,60,0.18);background:linear-gradient(160deg,#121009,#0d0b07);}
+  .cathdr{font-family:'Cinzel',serif;font-size:8px;letter-spacing:4px;color:#d4a843;text-transform:uppercase;padding:18px 16px 7px;border-top:1px solid rgba(180,150,60,0.1);}
   .cathdr:first-child{border-top:none;}
-  .sitem{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid rgba(180,150,60,0.06);transition:all 0.2s;cursor:grab;}
-  .sitem:hover{background:rgba(180,150,60,0.02);}
-  .sitem.dov{background:rgba(180,150,60,0.06);}
-  .sitem.chk{opacity:0.35;}
-  .cbox{width:16px;height:16px;border:1px solid rgba(180,150,60,0.3);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
-  .cbox.on{background:rgba(180,150,60,0.15);border-color:#b8963c;}
-  .iname{flex:2;font-family:'Cormorant Garamond',serif;font-size:15px;color:#e0d4b4;cursor:text;}
-  .iname.cross{text-decoration:line-through;color:#3a3020;}
-  .iqty{font-size:12px;color:#5a4e30;font-style:italic;min-width:60px;cursor:text;}
-  .dh{color:rgba(180,150,60,0.25);font-size:11px;cursor:grab;user-select:none;flex-shrink:0;}
+  .sitem{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid rgba(180,150,60,0.08);transition:all 0.2s;cursor:grab;}
+  .sitem:hover{background:rgba(180,150,60,0.03);}
+  .sitem.dov{background:rgba(180,150,60,0.07);}
+  .sitem.chk{opacity:0.4;}
+  .cbox{width:16px;height:16px;border:1px solid rgba(180,150,60,0.4);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
+  .cbox.on{background:rgba(180,150,60,0.2);border-color:#b8963c;}
+  .iname{flex:2;font-family:'Cormorant Garamond',serif;font-size:15px;color:#e8dfc8;cursor:text;}
+  .iname.cross{text-decoration:line-through;color:#5a5038;}
+  .iqty{font-size:12px;color:#907848;font-style:italic;min-width:60px;cursor:text;}
+  .dh{color:rgba(180,150,60,0.35);font-size:11px;cursor:grab;user-select:none;flex-shrink:0;}
 
   /* INPUTS */
-  .ginput{width:100%;background:transparent;border:none;border-bottom:1px solid rgba(180,150,60,0.15);color:#e8dfc8;font-family:'Cormorant Garamond',serif;font-size:14px;padding:8px 3px;outline:none;transition:border-color 0.2s;}
+  .ginput{width:100%;background:transparent;border:none;border-bottom:1px solid rgba(180,150,60,0.2);color:#e8dfc8;font-family:'Cormorant Garamond',serif;font-size:14px;padding:8px 3px;outline:none;transition:border-color 0.2s;}
   .ginput:focus{border-bottom-color:#b8963c;}
-  .ginput::placeholder{color:#2e2818;font-style:italic;}
-  .gsel{background:rgba(180,150,60,0.04);border:1px solid rgba(180,150,60,0.15);color:#c8b890;font-family:'Cormorant Garamond',serif;font-size:12px;padding:7px 9px;outline:none;cursor:pointer;width:100%;}
+  .ginput::placeholder{color:#5a5038;font-style:italic;}
+  .gsel{background:#1e1a12;border:1px solid rgba(180,150,60,0.2);color:#e8dfc8;font-family:'Cormorant Garamond',serif;font-size:12px;padding:7px 9px;outline:none;cursor:pointer;width:100%;}
+  .gsel option{background:#1e1a12;color:#e8dfc8;}
   .fgrid{display:grid;grid-template-columns:2fr 1fr 1.5fr auto;gap:10px;align-items:end;}
-  .flbl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#3a3020;text-transform:uppercase;margin-bottom:5px;}
+  .flbl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b09060;text-transform:uppercase;margin-bottom:5px;}
 
   /* RECIPE CARDS */
-  .rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:14px;}
-  .rcard{background:linear-gradient(135deg,#191410,#101008);border:1px solid rgba(180,150,60,0.15);padding:18px;transition:border-color 0.25s;}
-  .rcard:hover{border-color:rgba(180,150,60,0.35);}
-  .rname{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;font-weight:300;color:#e8dfc8;margin-bottom:6px;}
-  .rcount{font-size:9px;color:#3a3020;letter-spacing:1.5px;font-family:'Cinzel',serif;}
-  .itag{display:inline-block;padding:2px 7px;border:1px solid rgba(180,150,60,0.1);font-size:10px;color:#5a4e30;margin-right:3px;margin-bottom:3px;font-style:italic;}
+  .rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .rcard{background:linear-gradient(135deg,#191410,#101008);border:1px solid rgba(180,150,60,0.18);padding:18px;transition:border-color 0.25s;}
+  .rcard:hover{border-color:rgba(180,150,60,0.4);}
+  .rname{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;font-weight:300;color:#f0e4c0;margin-bottom:6px;}
+  .rcount{font-size:9px;color:#907848;letter-spacing:1.5px;font-family:'Cinzel',serif;}
+  .itag{display:inline-block;padding:2px 7px;border:1px solid rgba(180,150,60,0.18);font-size:10px;color:#a08858;margin-right:3px;margin-bottom:3px;font-style:italic;}
   .type-badge{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1.5px;padding:2px 7px;text-transform:uppercase;}
 
   /* IMPORT PANELS */
-  .ibox{background:rgba(180,150,60,0.02);border:1px solid rgba(180,150,60,0.1);}
+  .ibox{background:rgba(180,150,60,0.03);border:1px solid rgba(180,150,60,0.14);}
 
   /* MISC */
   .empty{text-align:center;padding:60px 0;}
-  .etxt{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:20px;color:#3a3020;}
-  .esub{font-size:11px;color:#2a2010;letter-spacing:1px;margin-top:6px;}
-  .rest-tag{display:inline-block;padding:2px 8px;border:1px solid rgba(180,150,60,0.18);font-size:10px;color:#6a5c38;margin-right:4px;margin-bottom:4px;font-style:italic;cursor:pointer;}
-  .rest-tag:hover{border-color:rgba(180,60,60,0.35);color:#904040;}
+  .etxt{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:20px;color:#907848;}
+  .esub{font-size:11px;color:#706040;letter-spacing:1px;margin-top:6px;}
+  .rest-tag{display:inline-block;padding:2px 8px;border:1px solid rgba(180,150,60,0.25);font-size:10px;color:#b09060;margin-right:4px;margin-bottom:4px;font-style:italic;cursor:pointer;}
+  .rest-tag:hover{border-color:rgba(180,60,60,0.5);color:#e08080;}
   @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
   .review-panel{border:1px solid rgba(180,150,60,0.35);background:linear-gradient(160deg,#1e1810,#141009);padding:24px;margin-bottom:20px;position:relative;}
   .review-panel::before{content:'';position:absolute;inset:10px;border:1px solid rgba(180,150,60,0.07);pointer-events:none;}
-  .review-badge{display:inline-flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b8963c;text-transform:uppercase;margin-bottom:16px;}
+  .review-badge{display:inline-flex;align-items:center;gap:6px;font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#d4a843;text-transform:uppercase;margin-bottom:16px;}
   .review-badge-dot{width:6px;height:6px;background:#b8963c;border-radius:50%;animation:pulse 1.5s ease-in-out infinite;}
   @keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
-  .notes-area{width:100%;background:rgba(180,150,60,0.02);border:none;border-bottom:1px solid rgba(180,150,60,0.15);color:#c8b890;font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;padding:8px 3px;outline:none;resize:vertical;min-height:64px;transition:border-color 0.2s;line-height:1.5;}
+  .notes-area{width:100%;background:rgba(180,150,60,0.03);border:none;border-bottom:1px solid rgba(180,150,60,0.2);color:#d4c898;font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;padding:8px 3px;outline:none;resize:vertical;min-height:64px;transition:border-color 0.2s;line-height:1.5;}
   .notes-area:focus{border-bottom-color:#b8963c;}
-  .notes-area::placeholder{color:#2e2818;}
-  .recipe-notes{margin-top:10px;padding:10px 12px;background:rgba(180,150,60,0.03);border-left:2px solid rgba(180,150,60,0.25);}
-  .recipe-notes-lbl{font-family:'Cinzel',serif;font-size:7px;letter-spacing:2px;color:#5a4e30;text-transform:uppercase;margin-bottom:4px;}
-  .recipe-notes-text{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#8a7850;line-height:1.5;white-space:pre-wrap;}
+  .notes-area::placeholder{color:#5a5038;font-style:italic;}
+  .recipe-notes{margin-top:10px;padding:10px 12px;background:rgba(180,150,60,0.04);border-left:2px solid rgba(180,150,60,0.3);}
+  .recipe-notes-lbl{font-family:'Cinzel',serif;font-size:7px;letter-spacing:2px;color:#b09060;text-transform:uppercase;margin-bottom:4px;}
+  .recipe-notes-text{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#c0a870;line-height:1.5;white-space:pre-wrap;}
   .rcard-header{display:flex;justify-content:space-between;align-items:flex-start;cursor:pointer;user-select:none;}
-  .rcard-toggle{font-size:10px;color:#5a4e30;flex-shrink:0;margin-left:8px;transition:transform 0.2s;}
+  .rcard-toggle{font-size:10px;color:#b09060;flex-shrink:0;margin-left:8px;transition:transform 0.25s;}
   .rcard-toggle.open{transform:rotate(180deg);}
-  .rcard-body{overflow:hidden;transition:max-height 0.3s ease;}
+  .rcard-body{overflow:hidden;transition:max-height 0.35s ease;}
   .step-row{display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;}
-  .step-num{font-family:'Cinzel',serif;font-size:9px;color:#b8963c;min-width:18px;margin-top:10px;flex-shrink:0;}
-  .step-input{flex:1;background:transparent;border:none;border-bottom:1px solid rgba(180,150,60,0.12);color:#c8b890;font-family:'Cormorant Garamond',serif;font-size:13px;padding:7px 3px;outline:none;resize:none;min-height:38px;line-height:1.5;width:100%;}
+  .step-num{font-family:'Cinzel',serif;font-size:9px;color:#d4a843;min-width:18px;margin-top:10px;flex-shrink:0;}
+  .step-input{flex:1;background:transparent;border:none;border-bottom:1px solid rgba(180,150,60,0.18);color:#d4c898;font-family:'Cormorant Garamond',serif;font-size:13px;padding:7px 3px;outline:none;resize:none;min-height:38px;line-height:1.5;width:100%;}
   .step-input:focus{border-bottom-color:#b8963c;}
-  .step-input::placeholder{color:#2a2010;font-style:italic;}
-  .step-display{font-family:'Cormorant Garamond',serif;font-size:14px;color:#c8b890;line-height:1.6;padding:2px 0;}
-  .print-check{width:14px;height:14px;border:1px solid rgba(180,150,60,0.3);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;margin-top:3px;}
+  .step-input::placeholder{color:#5a5038;font-style:italic;}
+  .step-display{font-family:'Cormorant Garamond',serif;font-size:14px;color:#d4c898;line-height:1.6;padding:2px 0;}
+  .print-check{width:14px;height:14px;border:1px solid rgba(180,150,60,0.4);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;margin-top:3px;}
   .print-check.on{background:rgba(180,150,60,0.2);border-color:#b8963c;}
 
-  .stitle{font-family:'Cinzel',serif;font-size:9px;letter-spacing:4px;color:#b8963c;text-transform:uppercase;text-align:center;margin-bottom:5px;}
-  .shead{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:32px;font-weight:300;text-align:center;color:#e8dfc8;margin-bottom:3px;}
-  .ssub{text-align:center;font-size:11px;color:#3a3020;letter-spacing:1px;margin-bottom:32px;font-style:italic;}
+  .stitle{font-family:'Cinzel',serif;font-size:9px;letter-spacing:4px;color:#d4a843;text-transform:uppercase;text-align:center;margin-bottom:5px;}
+  .shead{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:32px;font-weight:300;text-align:center;color:#f0e4c0;margin-bottom:3px;}
+  .ssub{text-align:center;font-size:11px;color:#907848;letter-spacing:1px;margin-bottom:32px;font-style:italic;}
+  .menu-week-toggle{display:flex;justify-content:center;gap:0;margin-bottom:24px;}
+  .week-tab{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2.5px;text-transform:uppercase;padding:9px 28px;border:1px solid rgba(180,150,60,0.25);background:transparent;color:#a09060;cursor:pointer;transition:all 0.2s;}
+  .week-tab:first-child{border-right:none;}
+  .week-tab.active{background:rgba(180,150,60,0.12);color:#f5d060;border-color:rgba(180,150,60,0.5);}
+  .week-tab:hover:not(.active){color:#e0b848;border-color:rgba(180,150,60,0.4);}
+  .recipe-filter-bar{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:10px 16px;border:1px solid rgba(180,150,60,0.18);background:rgba(180,150,60,0.04);}
+  .filter-btn{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;text-transform:uppercase;padding:6px 16px;border:1px solid rgba(180,150,60,0.25);background:transparent;color:#a09060;cursor:pointer;transition:all 0.2s;}
+  .filter-btn.active{background:rgba(180,150,60,0.14);color:#f5d060;border-color:rgba(180,150,60,0.55);}
+  .filter-btn:hover:not(.active){color:#e0b848;border-color:rgba(180,150,60,0.45);}
+  .filter-lbl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#907848;text-transform:uppercase;margin-right:4px;}
 `;
+
+// Proper collapsible recipe card using ref-measured height
+function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, onEdit, onDelete, UNITS, STORE_CATEGORIES }) {
+  const bodyRef = useRef(null);
+  const type = recipe.recipeType || "Entrée";
+
+  return (
+    <div className="rcard">
+      <div className="rcard-header" onClick={onToggle}>
+        <div style={{ flex: 1 }}>
+          <div className="rname" style={{ marginBottom: 4 }}>{recipe.name}</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+            <span className="type-badge" style={{ color: type === "Entrée" ? "#d4a843" : "#6aaa5a", border: `1px solid ${type === "Entrée" ? "rgba(180,150,60,0.3)" : "rgba(100,160,90,0.3)"}` }}>{type}</span>
+            <span className="rcount">{recipe.ingredients.length} ingredients · {(recipe.steps || []).filter(s => s.trim()).length} steps</span>
+          </div>
+        </div>
+        <div style={{ display: "flex", gap: 5, alignItems: "center" }} onClick={e => e.stopPropagation()}>
+          <div className={`print-check ${printSelected ? "on" : ""}`} title="Select for print" onClick={onPrintToggle}>
+            {printSelected && <span style={{ color: "#b8963c", fontSize: 9 }}>✓</span>}
+          </div>
+          <button className="btn-ghost" style={{ padding: "3px 10px", fontSize: 9 }} onClick={onEdit}>Edit</button>
+          <button className="btn-danger" style={{ padding: "3px 8px", fontSize: 9 }} onClick={onDelete}>✕</button>
+          <span className={`rcard-toggle ${isOpen ? "open" : ""}`}>▼</span>
+        </div>
+      </div>
+
+      {/* Collapse using scrollHeight so it truly shrinks */}
+      <div
+        ref={bodyRef}
+        style={{
+          overflow: "hidden",
+          transition: "max-height 0.35s ease",
+          maxHeight: isOpen ? (bodyRef.current ? bodyRef.current.scrollHeight : 2000) : 0,
+        }}
+      >
+        <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(180,150,60,0.12)" }}>
+          <div className="flbl" style={{ marginBottom: 8 }}>Ingredients</div>
+          <div style={{ marginBottom: 14 }}>
+            {recipe.ingredients.map((ing, i) => (
+              <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", borderBottom: "1px dotted rgba(180,150,60,0.1)", alignItems: "baseline" }}>
+                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 13, color: "#b09a60", minWidth: 40 }}>{ing.qty}</span>
+                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#9a8650", minWidth: 44 }}>{ing.unit && ing.unit !== "—" ? ing.unit : ""}</span>
+                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 14, color: "#d4c898" }}>{ing.name}</span>
+              </div>
+            ))}
+          </div>
+
+          {(recipe.steps || []).filter(s => s.trim()).length > 0 && (<>
+            <div className="flbl" style={{ marginBottom: 8 }}>Instructions</div>
+            {recipe.steps.filter(s => s.trim()).map((step, i) => (
+              <div key={i} className="step-row" style={{ marginBottom: 10 }}>
+                <span className="step-num">{i + 1}.</span>
+                <span className="step-display">{step}</span>
+              </div>
+            ))}
+          </>)}
+
+          {recipe.notes && (
+            <div className="recipe-notes" style={{ marginTop: 12 }}>
+              <div className="recipe-notes-lbl">Chef's Notes</div>
+              <div className="recipe-notes-text">{recipe.notes}</div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function App() {
   const [tab, setTab] = useState("planner");
@@ -271,8 +352,11 @@ export default function App() {
   const [printSelected, setPrintSelected] = useState({});
   const [restaurants, setRestaurants] = useState(SAMPLE_RESTAURANTS);
   const [newRestaurant, setNewRestaurant] = useState("");
-  const [mealPlan, setMealPlan] = useState({});
+  const [activeWeek, setActiveWeek] = useState("this"); // "this" | "next"
+  const [mealPlan, setMealPlan] = useState({});       // this week
+  const [nextMealPlan, setNextMealPlan] = useState({}); // next week
   const [draftPlan, setDraftPlan] = useState({});
+  const [recipeFilter, setRecipeFilter] = useState("all"); // "all" | "menu"
   const [shoppingList, setShoppingList] = useState([]);
   const [dragItem, setDragItem] = useState(null);
   const [dragOver, setDragOver] = useState(null);
@@ -312,12 +396,17 @@ export default function App() {
   const removeDraftExtra = (day, meal, idx) =>
     setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); return {...prev,[k]:{...s,extras:s.extras.filter((_,i)=>i!==idx)}}; });
 
-  const enterEdit = () => { setDraftPlan(JSON.parse(JSON.stringify(mealPlan))); setEditMode(true); };
+  const currentMealPlan = activeWeek === "this" ? mealPlan : nextMealPlan;
+  const setCurrentMealPlan = activeWeek === "this" ? setMealPlan : setNextMealPlan;
+
+  const enterEdit = () => { setDraftPlan(JSON.parse(JSON.stringify(currentMealPlan))); setEditMode(true); };
   const cancelEdit = () => { setDraftPlan({}); setEditMode(false); };
 
   const saveEdit = () => {
-    setMealPlan(draftPlan);
-    const newList = buildShoppingList(draftPlan, recipes, shoppingList);
+    setCurrentMealPlan(draftPlan);
+    // Only rebuild shopping list from this week's plan
+    const planForShopping = activeWeek === "this" ? draftPlan : mealPlan;
+    const newList = buildShoppingList(planForShopping, recipes, shoppingList);
     setShoppingList(newList);
     setDraftPlan({});
     setEditMode(false);
@@ -583,9 +672,20 @@ export default function App() {
 
   const remaining = shoppingList.filter(i => !i.checkedAt).length;
 
+  // Collect all recipe IDs referenced in this week's meal plan
+  const menuRecipeIds = new Set();
+  Object.values(mealPlan).forEach(slot => {
+    if (!slot || slot.entree === DINE_OUT_ID) return;
+    if (slot.entree) menuRecipeIds.add(parseInt(slot.entree));
+    if (slot.side) menuRecipeIds.add(parseInt(slot.side));
+    if (slot.side2) menuRecipeIds.add(parseInt(slot.side2));
+    (slot.extras || []).forEach(id => id && menuRecipeIds.add(parseInt(id)));
+  });
+
   // Render a read-only meal slot for the menu view
   const renderMenuSlot = (day, meal) => {
-    const slot = mealPlan[`${day}-${meal}`] || emptySlot();
+    const plan = editMode ? draftPlan : currentMealPlan;
+    const slot = plan[`${day}-${meal}`] || emptySlot();
     const isDiner = slot.entree === DINE_OUT_ID;
     const entreeName = recipeName(slot.entree);
     const sideName = recipeName(slot.side);
@@ -711,10 +811,20 @@ export default function App() {
         {/* ── PLANNER ── */}
         {tab === "planner" && (
           <div>
+            {/* Week toggle */}
+            {!editMode && (
+              <div className="menu-week-toggle">
+                <button className={`week-tab ${activeWeek === "this" ? "active" : ""}`}
+                  onClick={() => setActiveWeek("this")}>This Week</button>
+                <button className={`week-tab ${activeWeek === "next" ? "active" : ""}`}
+                  onClick={() => setActiveWeek("next")}>Next Week</button>
+              </div>
+            )}
+
             {/* Edit / Save bar */}
             <div className={`edit-bar ${editMode ? "edit-mode-strip" : ""}`}>
               <div>
-                <div className="edit-bar-title">{editMode ? "✏ Edit Mode" : "◆ The Week's Menu"}</div>
+                <div className="edit-bar-title">{editMode ? "✏ Edit Mode" : `◆ ${activeWeek === "this" ? "This Week's" : "Next Week's"} Menu`}</div>
                 <div className="edit-bar-note">
                   {editMode ? "Make your selections, then save to update provisions." : "Click Edit Menu to plan your week."}
                 </div>
@@ -816,8 +926,8 @@ export default function App() {
                 ) : (
                   <div>
                     <div style={{ fontSize: 22, color: "#b8963c", opacity: 0.4, marginBottom: 6 }}>📷</div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#5a4e30", textTransform: "uppercase", marginBottom: 4 }}>Upload Recipe Photo</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#2e2818" }}>Click or drag any recipe card, cookbook page, or handwritten note</div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#8a7850", textTransform: "uppercase", marginBottom: 4 }}>Upload Recipe Photo</div>
+                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#6a5c40" }}>Click or drag any recipe card, cookbook page, or handwritten note</div>
                   </div>
                 )}
                 {imageError && <div style={{ marginTop: 8, fontSize: 11, color: "#904040", fontStyle: "italic" }}>{imageError}</div>}
@@ -825,9 +935,9 @@ export default function App() {
 
               {/* Divider */}
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.08)" }} />
-                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#2e2818", textTransform: "uppercase" }}>or</span>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.08)" }} />
+                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.12)" }} />
+                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#6a5c40", textTransform: "uppercase" }}>or</span>
+                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.12)" }} />
               </div>
 
               {/* URL import */}
@@ -835,8 +945,8 @@ export default function App() {
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <span style={{ fontSize: 18, color: "#b8963c", opacity: 0.4 }}>🔗</span>
                   <div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#5a4e30", textTransform: "uppercase" }}>Import from URL</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 11, color: "#2e2818", marginTop: 2 }}>AllRecipes, Food Network, NYT Cooking, any recipe site</div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#8a7850", textTransform: "uppercase" }}>Import from URL</div>
+                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 11, color: "#6a5c40", marginTop: 2 }}>AllRecipes, Food Network, NYT Cooking, any recipe site</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 10 }}>
@@ -1031,9 +1141,39 @@ export default function App() {
               </div>
             )}
 
+            {/* Recipe filter bar */}
+            <div className="recipe-filter-bar">
+              <span className="filter-lbl">Show:</span>
+              <button className={`filter-btn ${recipeFilter === "all" ? "active" : ""}`}
+                onClick={() => setRecipeFilter("all")}>All Recipes</button>
+              <button className={`filter-btn ${recipeFilter === "menu" ? "active" : ""}`}
+                onClick={() => setRecipeFilter("menu")}>
+                On This Week's Menu {menuRecipeIds.size > 0 && `(${menuRecipeIds.size})`}
+              </button>
+              <div style={{ flex: 1 }} />
+              <button className="filter-btn" onClick={() => {
+                const allIds = recipes.reduce((acc, r) => ({ ...acc, [r.id]: true }), {});
+                const allCollapsed = recipes.every(r => collapsedCards[r.id]);
+                setCollapsedCards(allCollapsed ? {} : allIds);
+              }}>
+                {recipes.every(r => collapsedCards[r.id]) ? "Expand All" : "Collapse All"}
+              </button>
+            </div>
+
+            {/* Empty state for menu filter */}
+            {recipeFilter === "menu" && menuRecipeIds.size === 0 && (
+              <div className="empty">
+                <div style={{ fontSize: 28, color: "#b8963c", opacity: 0.15, marginBottom: 12 }}>◇</div>
+                <div className="etxt">No recipes on this week's menu</div>
+                <div className="esub">Plan your week first, then filter to see what's on it</div>
+                <button className="btn-ghost" style={{ marginTop: 16 }} onClick={() => setRecipeFilter("all")}>Show All Recipes</button>
+              </div>
+            )}
+
             {/* Recipe cards grouped by type */}
             {["Entrée","Side"].map(type => {
-              const typed = recipes.filter(r => (r.recipeType || "Entrée") === type);
+              let typed = recipes.filter(r => (r.recipeType || "Entrée") === type);
+              if (recipeFilter === "menu") typed = typed.filter(r => menuRecipeIds.has(r.id));
               if (!typed.length) return null;
               return (
                 <div key={type}>
@@ -1043,7 +1183,6 @@ export default function App() {
                   <div className="rgrid">
                     {typed.map(recipe => {
                       const isEditing = editingRecipe?.id === recipe.id;
-                      const isOpen = !collapsedCards[recipe.id];
                       if (isEditing) return (
                         <div key={recipe.id} className="rcard" style={{ borderColor: "rgba(180,150,60,0.4)", gridColumn: "1 / -1" }}>
                           <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#b8963c", textTransform: "uppercase", marginBottom: 16 }}>✏ Editing Recipe</div>
@@ -1105,65 +1244,18 @@ export default function App() {
                         </div>
                       );
                       return (
-                        <div key={recipe.id} className="rcard">
-                          {/* Card header — always visible, click to expand/collapse */}
-                          <div className="rcard-header" onClick={() => setCollapsedCards(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}>
-                            <div style={{ flex: 1 }}>
-                              <div className="rname" style={{ marginBottom: 4 }}>{recipe.name}</div>
-                              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                                <span className="type-badge" style={{ color: type === "Entrée" ? "#b8963c" : "#6a8a5a", border: `1px solid ${type === "Entrée" ? "rgba(180,150,60,0.25)" : "rgba(100,140,90,0.25)"}` }}>{recipe.recipeType || "Entrée"}</span>
-                                <span className="rcount">{recipe.ingredients.length} ingredients · {(recipe.steps || []).filter(s => s.trim()).length} steps</span>
-                              </div>
-                            </div>
-                            <div style={{ display: "flex", gap: 5, alignItems: "center" }} onClick={e => e.stopPropagation()}>
-                              <div className={`print-check ${printSelected[recipe.id] ? "on" : ""}`} title="Select for print"
-                                onClick={() => setPrintSelected(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}>
-                                {printSelected[recipe.id] && <span style={{ color: "#b8963c", fontSize: 9 }}>✓</span>}
-                              </div>
-                              <button className="btn-ghost" style={{ padding: "3px 10px", fontSize: 9 }}
-                                onClick={() => { setPendingRecipe(null); startEditRecipe(recipe); }}>Edit</button>
-                              <button className="btn-danger" style={{ padding: "3px 8px", fontSize: 9 }}
-                                onClick={() => setRecipes(p => p.filter(r => r.id !== recipe.id))}>✕</button>
-                              <span className={`rcard-toggle ${isOpen ? "open" : ""}`}>▼</span>
-                            </div>
-                          </div>
-
-                          {/* Collapsible body */}
-                          {isOpen && (
-                            <div style={{ marginTop: 14, paddingTop: 14, borderTop: "1px solid rgba(180,150,60,0.1)" }}>
-                              {/* Ingredients */}
-                              <div className="flbl" style={{ marginBottom: 8 }}>Ingredients</div>
-                              <div style={{ marginBottom: 14 }}>
-                                {recipe.ingredients.map((ing, i) => (
-                                  <div key={i} style={{ display: "flex", gap: 8, padding: "4px 0", borderBottom: "1px dotted rgba(180,150,60,0.08)", alignItems: "baseline" }}>
-                                    <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 13, color: "#7a6840", minWidth: 40 }}>{ing.qty}</span>
-                                    <span style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#5a4e30", minWidth: 44 }}>{ing.unit && ing.unit !== "—" ? ing.unit : ""}</span>
-                                    <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 14, color: "#c8b890" }}>{ing.name}</span>
-                                  </div>
-                                ))}
-                              </div>
-
-                              {/* Steps */}
-                              {(recipe.steps || []).filter(s => s.trim()).length > 0 && (<>
-                                <div className="flbl" style={{ marginBottom: 8 }}>Instructions</div>
-                                {recipe.steps.filter(s => s.trim()).map((step, i) => (
-                                  <div key={i} className="step-row" style={{ marginBottom: 10 }}>
-                                    <span className="step-num">{i + 1}.</span>
-                                    <span className="step-display">{step}</span>
-                                  </div>
-                                ))}
-                              </>)}
-
-                              {/* Notes */}
-                              {recipe.notes && (
-                                <div className="recipe-notes" style={{ marginTop: 12 }}>
-                                  <div className="recipe-notes-lbl">Chef's Notes</div>
-                                  <div className="recipe-notes-text">{recipe.notes}</div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                        </div>
+                        <RecipeCard
+                          key={recipe.id}
+                          recipe={recipe}
+                          isOpen={!collapsedCards[recipe.id]}
+                          onToggle={() => setCollapsedCards(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}
+                          printSelected={!!printSelected[recipe.id]}
+                          onPrintToggle={() => setPrintSelected(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}
+                          onEdit={() => { setPendingRecipe(null); startEditRecipe(recipe); }}
+                          onDelete={() => setRecipes(p => p.filter(r => r.id !== recipe.id))}
+                          UNITS={UNITS}
+                          STORE_CATEGORIES={STORE_CATEGORIES}
+                        />
                       );
                     })}
                   </div>
