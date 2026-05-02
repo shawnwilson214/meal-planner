@@ -221,7 +221,7 @@ const css = `
   .flbl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b09060;text-transform:uppercase;margin-bottom:5px;}
 
   /* RECIPE CARDS */
-  .rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  .rgrid{display:grid;grid-template-columns:1fr;gap:16px;}
   .rcard{background:linear-gradient(135deg,#191410,#101008);border:1px solid rgba(180,150,60,0.18);padding:18px;transition:border-color 0.25s;}
   .rcard:hover{border-color:rgba(180,150,60,0.4);}
   .rname{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;font-weight:300;color:#f0e4c0;margin-bottom:6px;}
@@ -365,9 +365,6 @@ export default function App() {
   const [editingId, setEditingId] = useState(null);
   const [newManualItem, setNewManualItem] = useState({ name: "", qty: "1", unit: "—", category: "Produce" });
   const imageInputRef = useRef();
-  const [imageLoading, setImageLoading] = useState(false);
-  const [imageError, setImageError] = useState("");
-  const [imagePreview, setImagePreview] = useState(null);
   const [urlInput, setUrlInput] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState("");
@@ -530,7 +527,7 @@ export default function App() {
       @media print{body{padding:20px 32px;}@page{margin:0.5in;size:letter portrait;}}
     </style></head><body>
       <h1>The Wilson's Kitchen</h1>
-      <div class="sub">Thornton, Colorado</div>
+      
       <div class="date">${date}</div>
       <div class="divider"></div>
       ${Object.entries(grouped).map(([cat, items]) => `
@@ -582,7 +579,7 @@ export default function App() {
       .notes-txt{font-style:italic;font-size:13px;color:#5a4030;line-height:1.5;white-space:pre-wrap;}
       @media print{body{padding:20px 32px;}@page{margin:0.5in;size:letter portrait;}.recipe{page-break-inside:avoid;}}
     </style></head><body>
-      <div class="site-hdr"><h1>The Wilson's Kitchen</h1><div class="sub">Thornton, Colorado</div></div>
+      <div class="site-hdr"><h1>The Wilson's Kitchen</h1></div>
       ${selected.map(r => `
         <div class="recipe">
           <div class="recipe-name">${r.name}</div>
@@ -987,7 +984,7 @@ Return ONLY the JSON, nothing else.`;
     <div style={{ minHeight: "100vh", background: "#0e0c09", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
       <style>{css}</style>
       <div style={{ fontFamily: "'Cinzel',serif", fontSize: 28, fontWeight: 700, color: "#d4a843", letterSpacing: 5 }}>The Wilson's Kitchen</div>
-      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 13, color: "#8a7a50", letterSpacing: 3 }}>Thornton, Colorado</div>
+      
       <div style={{ marginTop: 24, display: "flex", gap: 8, alignItems: "center" }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#b8963c", animation: "pulse 1.2s ease-in-out 0s infinite" }} />
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#b8963c", animation: "pulse 1.2s ease-in-out 0.2s infinite" }} />
@@ -1003,7 +1000,7 @@ Return ONLY the JSON, nothing else.`;
 
       <header className="header">
         <div className="logo">The Wilson's Kitchen</div>
-        <div className="logo-sub">Thornton, Colorado</div>
+        
         <div className="divider">
           <div className="divider-line" />
           <span style={{ color: "#b8963c", fontSize: 8 }}>◆</span>
@@ -1125,77 +1122,13 @@ Return ONLY the JSON, nothing else.`;
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 28 }}>
 
-              {/* Image / PDF upload */}
-              <div className="ibox" style={{ padding: "22px", cursor: "pointer", borderStyle: "dashed", textAlign: "center", transition: "all 0.25s" }}
-                onClick={() => !imageLoading && imageInputRef.current.click()}
-                onDragOver={e => e.preventDefault()}
-                onDrop={e => {
-                  e.preventDefault();
-                  const f = e.dataTransfer.files[0];
-                  if (f && (f.type.startsWith("image/") || f.type === "application/pdf")) {
-                    handleImageUpload({ target: { files: [f], value: "" } });
-                  }
-                }}>
-                <input ref={imageInputRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={handleImageUpload} />
-                {imageLoading ? (
-                  <div>
-                    <div style={{ fontSize: 18, color: "#b8963c", animation: "spin 1.5s linear infinite", display: "inline-block", marginBottom: 6 }}>◆</div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#b8963c", textTransform: "uppercase" }}>Reading your recipe...</div>
-                  </div>
-                ) : (
-                  <div>
-                    <div style={{ fontSize: 22, marginBottom: 6 }}>
-                      <span style={{ color: "#b8963c", opacity: 0.5 }}>📷</span>
-                      <span style={{ color: "#b8963c", opacity: 0.5, marginLeft: 8 }}>📄</span>
-                    </div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#b09060", textTransform: "uppercase", marginBottom: 4 }}>Upload Recipe Photo or PDF</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#907848" }}>Click or drag an image, cookbook page, handwritten note, or PDF</div>
-                  </div>
-                )}
-                {imageError && <div style={{ marginTop: 8, fontSize: 11, color: "#c06060", fontStyle: "italic" }}>{imageError}</div>}
-              </div>
-
-              {/* Divider */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.12)" }} />
-                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#6a5c40", textTransform: "uppercase" }}>or</span>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.12)" }} />
-              </div>
-
-              {/* URL import */}
-              <div className="ibox" style={{ padding: "20px" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <span style={{ fontSize: 18, color: "#b8963c", opacity: 0.4 }}>🔗</span>
-                  <div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#8a7850", textTransform: "uppercase" }}>Import from URL</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 11, color: "#6a5c40", marginTop: 2 }}>AllRecipes, Food Network, NYT Cooking, any recipe site</div>
-                  </div>
-                </div>
-                <div style={{ display: "flex", gap: 10 }}>
-                  <input className="ginput" placeholder="https://www.allrecipes.com/recipe/..." value={urlInput}
-                    onChange={e => setUrlInput(e.target.value)}
-                    onKeyDown={e => e.key === "Enter" && handleUrlExtract()} />
-                  <button className="btn-gold" onClick={handleUrlExtract} disabled={urlLoading} style={{ whiteSpace: "nowrap", flexShrink: 0, opacity: urlLoading ? 0.6 : 1 }}>
-                    {urlLoading ? <span style={{ animation: "spin 1.5s linear infinite", display: "inline-block" }}>◆</span> : "Extract"}
-                  </button>
-                </div>
-                {urlError && <div style={{ marginTop: 8, fontSize: 11, color: "#904040", fontStyle: "italic" }}>{urlError}</div>}
-              </div>
-
-              {/* Divider */}
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.08)" }} />
-                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#2e2818", textTransform: "uppercase" }}>or</span>
-                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.08)" }} />
-              </div>
-
-              {/* Manual */}
+              {/* Manual entry */}
               <div className="ibox" style={{ padding: "20px" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
                   <span style={{ fontSize: 18, color: "#b8963c", opacity: 0.4 }}>✏</span>
                   <div>
-                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#5a4e30", textTransform: "uppercase" }}>Enter Manually</div>
-                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 11, color: "#2e2818", marginTop: 2 }}>Type in the recipe name and ingredients yourself</div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#b09060", textTransform: "uppercase" }}>Enter Manually</div>
+                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 11, color: "#907848", marginTop: 2 }}>Type in the recipe name and ingredients yourself</div>
                   </div>
                 </div>
                 {!showAddRecipe ? (
