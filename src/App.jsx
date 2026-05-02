@@ -22,6 +22,20 @@ const UNITS = [
 
 const DAYS = ["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"];
 
+const STAPLES_LIST = [
+  { name: "Milk", qty: "1", unit: "gal", category: "Dairy & Eggs" },
+  { name: "Bread", qty: "1", unit: "pkg", category: "Bakery & Bread" },
+  { name: "Creamer", qty: "1", unit: "pkg", category: "Dairy & Eggs" },
+  { name: "Cheese Pizza Lunchables", qty: "4", unit: "pkg", category: "Deli" },
+  { name: "Cheez-Its", qty: "1", unit: "pkg", category: "Snacks & Chips" },
+  { name: "Cheetos", qty: "1", unit: "pkg", category: "Snacks & Chips" },
+  { name: "BBQ Chips", qty: "1", unit: "pkg", category: "Snacks & Chips" },
+  { name: "Cheese Sticks", qty: "1", unit: "pkg", category: "Dairy & Eggs" },
+  { name: "Fiber One Bars", qty: "1", unit: "pkg", category: "Health & Wellness" },
+  { name: "Bananas", qty: "1", unit: "bunch", category: "Produce" },
+  { name: "Grapes", qty: "1", unit: "pkg", category: "Produce" },
+];
+
 const WEEKEND_DAYS = ["Saturday","Sunday"];
 const WEEKEND_MEALS = ["Breakfast","Lunch","Dinner"];
 const WEEKDAY_MEALS = ["Dinner"];
@@ -106,8 +120,19 @@ const buildShoppingList = (mealPlan, recipes, existing = []) => {
     if (!recipe) return;
     recipe.ingredients.forEach(ing => {
       const k = ing.name.toLowerCase();
-      if (map[k]) map[k].count += 1;
-      else map[k] = { ...ing, id: uid(), count: 1, checkedAt: null };
+      if (map[k]) {
+        // Try to sum numeric quantities
+        const existingQty = parseFloat(map[k].qty);
+        const newQty = parseFloat(ing.qty);
+        if (!isNaN(existingQty) && !isNaN(newQty)) {
+          map[k].qty = String(existingQty + newQty);
+        } else {
+          map[k].qty = `${map[k].qty} + ${ing.qty}`;
+        }
+        map[k].count += 1;
+      } else {
+        map[k] = { ...ing, id: uid(), count: 1, checkedAt: null };
+      }
     });
   };
   Object.values(mealPlan).forEach(slot => {
@@ -200,15 +225,17 @@ const css = `
   .shop-list{border:1px solid rgba(180,150,60,0.18);background:linear-gradient(160deg,#121009,#0d0b07);}
   .cathdr{font-family:'Cinzel',serif;font-size:8px;letter-spacing:4px;color:#d4a843;text-transform:uppercase;padding:18px 16px 7px;border-top:1px solid rgba(180,150,60,0.1);}
   .cathdr:first-child{border-top:none;}
-  .sitem{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(180,150,60,0.08);transition:all 0.2s;cursor:grab;}
+  .sitem{display:flex;align-items:center;gap:8px;padding:12px 10px;border-bottom:1px solid rgba(180,150,60,0.08);transition:all 0.2s;cursor:grab;flex-wrap:nowrap;overflow:hidden;}
   .sitem:hover{background:rgba(180,150,60,0.03);}
   .sitem.dov{background:rgba(180,150,60,0.07);}
   .sitem.chk{opacity:0.4;}
-  .cbox{width:24px;height:24px;border:1px solid rgba(180,150,60,0.4);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
+  .cbox{width:26px;height:26px;border:1px solid rgba(180,150,60,0.4);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
   .cbox.on{background:rgba(180,150,60,0.2);border-color:#b8963c;}
-  .iname{flex:2;font-family:'Cormorant Garamond',serif;font-size:17px;color:#e8dfc8;cursor:text;}
+  .iname{flex:1;font-family:'Cormorant Garamond',serif;font-size:16px;color:#e8dfc8;cursor:text;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .iname.cross{text-decoration:line-through;color:#5a5038;}
-  .iqty{font-size:13px;color:#907848;font-style:italic;min-width:60px;cursor:text;}
+  .imeta{display:flex;align-items:center;gap:4px;flex-shrink:0;}
+  .iqty{font-size:13px;color:#b09060;font-style:italic;cursor:text;min-width:28px;text-align:right;}
+  .iunit{font-size:11px;color:#907848;font-style:italic;}
   .dh{color:rgba(180,150,60,0.35);font-size:14px;cursor:grab;user-select:none;flex-shrink:0;}
 
   /* INPUTS */
@@ -271,11 +298,33 @@ const css = `
   .week-tab:first-child{border-right:none;}
   .week-tab.active{background:rgba(180,150,60,0.12);color:#f5d060;border-color:rgba(180,150,60,0.5);}
   .week-tab:hover:not(.active){color:#e0b848;border-color:rgba(180,150,60,0.4);}
-  .recipe-filter-bar{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:10px 16px;border:1px solid rgba(180,150,60,0.18);background:rgba(180,150,60,0.04);}
+  .recipe-filter-bar{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:10px 16px;border:1px solid rgba(180,150,60,0.18);background:rgba(180,150,60,0.04);flex-wrap:wrap;}
   .filter-btn{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;text-transform:uppercase;padding:6px 16px;border:1px solid rgba(180,150,60,0.25);background:transparent;color:#a09060;cursor:pointer;transition:all 0.2s;}
   .filter-btn.active{background:rgba(180,150,60,0.14);color:#f5d060;border-color:rgba(180,150,60,0.55);}
   .filter-btn:hover:not(.active){color:#e0b848;border-color:rgba(180,150,60,0.45);}
   .filter-lbl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#907848;text-transform:uppercase;margin-right:4px;}
+
+  /* STAPLES MODAL */
+  .modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.75);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:20px 12px;overflow-y:auto;}
+  .modal-box{background:#141009;border:1px solid rgba(180,150,60,0.4);padding:24px 20px;width:100%;max-width:480px;position:relative;}
+
+  /* MOBILE */
+  @media(max-width:600px){
+    .main{padding:16px 10px;}
+    .nav-btn{font-size:8px;letter-spacing:1.5px;padding:8px 14px;}
+    .edit-bar{flex-direction:column;gap:10px;padding:12px;}
+    .edit-grid{grid-template-columns:1fr 1fr;overflow-x:auto;}
+    .menu-day-header{flex-direction:column;}
+    .menu-day-name{width:100%;border-right:none;border-bottom:1px solid rgba(180,150,60,0.12);padding:10px 14px;}
+    .menu-meals{flex-direction:column;}
+    .menu-meal{min-width:unset;border-right:none;border-bottom:1px solid rgba(180,150,60,0.06);}
+    .sitem{padding:10px 8px;gap:6px;}
+    .iname{font-size:15px;}
+    .fgrid{grid-template-columns:1fr 1fr;}
+    .logo{font-size:22px;letter-spacing:3px;}
+    .shead{font-size:22px;}
+    .btn-gold,.btn-ghost,.btn-save{font-size:8px;padding:8px 14px;}
+  }
 `;
 
 // Proper collapsible recipe card using ref-measured height
@@ -298,7 +347,7 @@ function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, on
             {printSelected && <span style={{ color: "#b8963c", fontSize: 9 }}>✓</span>}
           </div>
           <button className="btn-ghost" style={{ padding: "3px 10px", fontSize: 9 }} onClick={onEdit}>Edit</button>
-          <button className="btn-danger" style={{ padding: "3px 8px", fontSize: 9 }} onClick={onDelete}>✕</button>
+          {onDelete && <button className="btn-danger" style={{ padding: "3px 8px", fontSize: 9 }} onClick={onDelete}>✕</button>}
           <span className={`rcard-toggle ${isOpen ? "open" : ""}`}>▼</span>
         </div>
       </div>
@@ -350,7 +399,10 @@ export default function App() {
   const [tab, setTab] = useState("planner");
   const [editMode, setEditMode] = useState(false);
   const [recipes, setRecipes] = useState(SAMPLE_RECIPES);
-  const [collapsedCards, setCollapsedCards] = useState({});
+  // Default all recipes collapsed
+  const [collapsedCards, setCollapsedCards] = useState(() =>
+    SAMPLE_RECIPES.reduce((acc, r) => ({ ...acc, [r.id]: true }), {})
+  );
   const [printSelected, setPrintSelected] = useState({});
   const [restaurants, setRestaurants] = useState(SAMPLE_RESTAURANTS);
   const [newRestaurant, setNewRestaurant] = useState("");
@@ -363,8 +415,14 @@ export default function App() {
   const [dragItem, setDragItem] = useState(null);
   const [dragOver, setDragOver] = useState(null);
   const [editingId, setEditingId] = useState(null);
-  const [newManualItem, setNewManualItem] = useState({ name: "", qty: "1", unit: "—", category: "Produce" });
+  const [newManualItem, setNewManualItem] = useState({ name: "", qty: "", unit: "", category: "" });
+  const [staples, setStaples] = useState(STAPLES_LIST.map(s => ({ ...s, id: uid() })));
+  const [showStaples, setShowStaples] = useState(false);
+  const [recipeEditMode, setRecipeEditMode] = useState(false);
   const imageInputRef = useRef();
+  const [imagePreview, setImagePreview] = useState(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState("");
   const [urlInput, setUrlInput] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState("");
@@ -381,8 +439,8 @@ export default function App() {
   // This prevents the default state from overwriting saved Firestore data.
 
   const fbLoaded = useRef({});
-  const COLLECTIONS = ["recipes", "mealPlan", "nextMealPlan", "shoppingList", "restaurants"];
-  const skipWrite = useRef({ recipes: true, mealPlan: true, nextMealPlan: true, shoppingList: true, restaurants: true });
+  const COLLECTIONS = ["recipes", "mealPlan", "nextMealPlan", "shoppingList", "restaurants", "staples"];
+  const skipWrite = useRef({ recipes: true, mealPlan: true, nextMealPlan: true, shoppingList: true, restaurants: true, staples: true });
 
   useEffect(() => {
     const unsubs = [];
@@ -419,6 +477,7 @@ export default function App() {
     listen("nextMealPlan",  "household/nextMealPlan",  (d) => { if (d.plan)                setNextMealPlan(d.plan); });
     listen("shoppingList",  "household/shoppingList",  (d) => { if (Array.isArray(d.list)) setShoppingList(d.list); });
     listen("restaurants",   "household/restaurants",   (d) => { if (Array.isArray(d.list)) setRestaurants(d.list); });
+    listen("staples",       "household/staples",       (d) => { if (Array.isArray(d.list)) setStaples(d.list); });
 
     // Safety fallback — if Firestore never responds (offline/blocked), unblock UI after 5s
     const fallback = setTimeout(() => {
@@ -440,6 +499,7 @@ export default function App() {
   useEffect(() => { if (!skipWrite.current.nextMealPlan) saveToFb("household/nextMealPlan", { plan: nextMealPlan }); }, [nextMealPlan]);
   useEffect(() => { if (!skipWrite.current.shoppingList) saveToFb("household/shoppingList", { list: shoppingList }); }, [shoppingList]);
   useEffect(() => { if (!skipWrite.current.restaurants)  saveToFb("household/restaurants",  { list: restaurants }); },  [restaurants]);
+  useEffect(() => { if (!skipWrite.current.staples)      saveToFb("household/staples",      { list: staples }); },      [staples]);
 
   // Auto-purge checked items after 24h
   useEffect(() => {
@@ -449,6 +509,28 @@ export default function App() {
     }, 60000);
     return () => clearInterval(interval);
   }, []);
+
+  // Auto-add staples on Monday
+  useEffect(() => {
+    const lastStaplesKey = "lastStaplesAdded";
+    const checkAndAddStaples = () => {
+      const today = new Date();
+      if (today.getDay() !== 1) return; // 1 = Monday
+      const todayStr = today.toDateString();
+      const last = localStorage.getItem(lastStaplesKey);
+      if (last === todayStr) return;
+      setShoppingList(prev => {
+        const existing = [...prev];
+        staples.forEach(staple => {
+          const alreadyThere = existing.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
+          if (!alreadyThere) existing.push({ ...staple, id: uid(), checkedAt: null });
+        });
+        return existing;
+      });
+      localStorage.setItem(lastStaplesKey, todayStr);
+    };
+    checkAndAddStaples();
+  }, [staples]);
 
   const getMealsForDay = (day) => WEEKEND_DAYS.includes(day) ? WEEKEND_MEALS : WEEKDAY_MEALS;
 
@@ -495,7 +577,7 @@ export default function App() {
   const addManualItem = () => {
     if (!newManualItem.name.trim()) return;
     setShoppingList(prev => [...prev, { ...newManualItem, id: uid(), checkedAt: null }]);
-    setNewManualItem({ name: "", qty: "1", unit: "—", category: "Produce" });
+    setNewManualItem({ name: "", qty: "", unit: "", category: "" });
   };
 
   const printShoppingList = () => {
@@ -525,7 +607,6 @@ export default function App() {
       @media print{body{padding:20px 32px;}@page{margin:0.5in;size:letter portrait;}}
     </style></head><body>
       <h1>The Wilson's Kitchen</h1>
-      
       <div class="date">${date}</div>
       <div class="divider"></div>
       ${Object.entries(grouped).map(([cat, items]) => `
@@ -541,13 +622,19 @@ export default function App() {
           `).join("")}
         </div>
       `).join("")}
-      <div class="footer">The Wilson's &nbsp;◆&nbsp; Weekly Provisions</div>
+      <div class="footer">The Wilson's &nbsp;&diams;&nbsp; Weekly Provisions</div>
     </body></html>`;
-    const win = window.open("", "_blank");
-    win.document.write(html);
-    win.document.close();
-    win.focus();
-    setTimeout(() => win.print(), 400);
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    document.body.appendChild(iframe);
+    iframe.contentDocument.open();
+    iframe.contentDocument.write(html);
+    iframe.contentDocument.close();
+    iframe.contentWindow.focus();
+    setTimeout(() => {
+      iframe.contentWindow.print();
+      setTimeout(() => document.body.removeChild(iframe), 1000);
+    }, 600);
   };
 
   const printRecipes = () => {
@@ -839,6 +926,7 @@ Return ONLY the JSON, nothing else.`;
   const savePendingRecipe = () => {
     if (!pendingRecipe?.name?.trim()) return;
     setRecipes(prev => [...prev, pendingRecipe]);
+    setCollapsedCards(p => ({ ...p, [pendingRecipe.id]: true }));
     setPendingRecipe(null);
   };
 
@@ -1005,7 +1093,7 @@ Return ONLY the JSON, nothing else.`;
           <div className="divider-line" />
         </div>
         <nav className="nav">
-          {[["planner","Weekly Menu"],["recipes","Recipes"],["shopping","Provisions"]].map(([key, label]) => (
+          {[["planner","Weekly Menu"],["recipes","Recipes"],["shopping","Shopping List"]].map(([key, label]) => (
             <button key={key} className={`nav-btn ${tab === key ? "active" : ""}`} onClick={() => { setTab(key); if(key !== "planner") { cancelEdit(); } }}>
               {label}
               {key === "shopping" && remaining > 0 && <span className="badge">{remaining}</span>}
@@ -1298,12 +1386,16 @@ Return ONLY the JSON, nothing else.`;
             <div className="recipe-filter-bar">
               <span className="filter-lbl">Show:</span>
               <button className={`filter-btn ${recipeFilter === "all" ? "active" : ""}`}
-                onClick={() => setRecipeFilter("all")}>All Recipes</button>
+                onClick={() => setRecipeFilter("all")}>All</button>
               <button className={`filter-btn ${recipeFilter === "menu" ? "active" : ""}`}
                 onClick={() => setRecipeFilter("menu")}>
-                On This Week's Menu {menuRecipeIds.size > 0 && `(${menuRecipeIds.size})`}
+                This Week {menuRecipeIds.size > 0 && `(${menuRecipeIds.size})`}
               </button>
               <div style={{ flex: 1 }} />
+              <button className={`filter-btn ${recipeEditMode ? "active" : ""}`}
+                onClick={() => setRecipeEditMode(p => !p)}>
+                {recipeEditMode ? "✏ Edit On" : "Edit Mode"}
+              </button>
               <button className="filter-btn" onClick={() => {
                 const allIds = recipes.reduce((acc, r) => ({ ...acc, [r.id]: true }), {});
                 const allCollapsed = recipes.every(r => collapsedCards[r.id]);
@@ -1405,7 +1497,7 @@ Return ONLY the JSON, nothing else.`;
                           printSelected={!!printSelected[recipe.id]}
                           onPrintToggle={() => setPrintSelected(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}
                           onEdit={() => { setPendingRecipe(null); startEditRecipe(recipe); }}
-                          onDelete={() => setRecipes(p => p.filter(r => r.id !== recipe.id))}
+                          onDelete={recipeEditMode ? () => setRecipes(p => p.filter(r => r.id !== recipe.id)) : null}
                           UNITS={UNITS}
                           STORE_CATEGORIES={STORE_CATEGORIES}
                         />
@@ -1418,12 +1510,12 @@ Return ONLY the JSON, nothing else.`;
           </div>
         )}
 
-        {/* ── SHOPPING / PROVISIONS ── */}
+        {/* ── SHOPPING LIST ── */}
         {tab === "shopping" && (
           <div>
             <div className="stitle">Market Order</div>
-            <div className="shead">Provisions Required</div>
-            <div className="ssub">{remaining} of {shoppingList.length} items remaining · Drag to reorder · Checked items auto-remove after 24 hours</div>
+            <div className="shead">Shopping List</div>
+            <div className="ssub">{remaining} of {shoppingList.length} items remaining · Checked items auto-remove after 24 hours</div>
 
             {/* Add manual item */}
             <div style={{ padding: "16px", border: "1px solid rgba(180,150,60,0.18)", background: "rgba(180,150,60,0.04)", marginBottom: 20 }}>
@@ -1452,7 +1544,7 @@ Return ONLY the JSON, nothing else.`;
                   <div className="flbl" style={{ fontSize: 7, marginBottom: 4 }}>Qty</div>
                   <input
                     className="ginput"
-                    placeholder="1"
+                    placeholder=""
                     value={newManualItem.qty}
                     onChange={e => setNewManualItem(p => ({ ...p, qty: e.target.value }))}
                     style={{ fontSize: 15, padding: "8px 4px", minHeight: 40, textAlign: "center" }}
@@ -1466,7 +1558,8 @@ Return ONLY the JSON, nothing else.`;
                     onChange={e => setNewManualItem(p => ({ ...p, unit: e.target.value }))}
                     style={{ minHeight: 40, fontSize: 14, padding: "8px 6px" }}
                   >
-                    {UNITS.map(u => <option key={u}>{u}</option>)}
+                    <option value="">—</option>
+                    {UNITS.filter(u => u !== "—").map(u => <option key={u}>{u}</option>)}
                   </select>
                 </div>
                 <div>
@@ -1477,6 +1570,7 @@ Return ONLY the JSON, nothing else.`;
                     onChange={e => setNewManualItem(p => ({ ...p, category: e.target.value }))}
                     style={{ minHeight: 40, fontSize: 14, padding: "8px 6px" }}
                   >
+                    <option value="">—</option>
                     {STORE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
                   </select>
                 </div>
@@ -1484,18 +1578,24 @@ Return ONLY the JSON, nothing else.`;
             </div>
 
             {shoppingList.length > 0 && (
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
-                <button className="btn-ghost" onClick={printShoppingList}>🖨 Print List</button>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+                <button className="btn-ghost" onClick={() => setShowStaples(true)}>⭐ Staples</button>
+                <button className="btn-ghost" onClick={printShoppingList}>🖨 Print</button>
                 <button className="btn-ghost" onClick={() => setShoppingList(p => p.map(i => ({ ...i, checkedAt: null })))}>Uncheck All</button>
-                <button className="btn-danger" onClick={() => setShoppingList([])}>Clear List</button>
+                <button className="btn-danger" onClick={() => setShoppingList([])}>Clear</button>
+              </div>
+            )}
+            {shoppingList.length === 0 && (
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
+                <button className="btn-ghost" onClick={() => setShowStaples(true)}>⭐ Edit Staples</button>
               </div>
             )}
 
             {shoppingList.length === 0 ? (
               <div className="empty">
                 <div style={{ fontSize: 32, color: "#b8963c", opacity: 0.15, marginBottom: 12 }}>◇</div>
-                <div className="etxt">No provisions listed</div>
-                <div className="esub">Plan your menu and save to generate your list</div>
+                <div className="etxt">No items on your list</div>
+                <div className="esub">Plan your menu and save to generate your list, or add items above</div>
                 <button className="btn-ghost" style={{ marginTop: 16 }} onClick={() => setTab("planner")}>Go to Menu Planner</button>
               </div>
             ) : (
@@ -1511,34 +1611,28 @@ Return ONLY the JSON, nothing else.`;
                         onDragEnd={handleDragEnd}
                         className={`sitem ${item.checkedAt ? "chk" : ""} ${dragOver === item.id ? "dov" : ""}`}>
                         <div className={`cbox ${item.checkedAt ? "on" : ""}`} onClick={() => toggleCheck(item.id)}>
-                          {item.checkedAt && <span style={{ color: "#b8963c", fontSize: 9 }}>✓</span>}
+                          {item.checkedAt && <span style={{ color: "#b8963c", fontSize: 11 }}>✓</span>}
                         </div>
-                        <span className="dh">⋮⋮</span>
-                        {editingId === `${item.id}-name` ? (
-                          <input autoFocus className="ginput" style={{ flex: 2 }} value={item.name}
-                            onChange={e => updateItem(item.id, "name", e.target.value)}
-                            onBlur={() => setEditingId(null)}
-                            onKeyDown={e => e.key === "Enter" && setEditingId(null)} />
-                        ) : (
-                          <span className={`iname ${item.checkedAt ? "cross" : ""}`} style={{ flex: 3 }} onClick={() => setEditingId(`${item.id}-name`)}>{item.name}</span>
-                        )}
-                        {editingId === `${item.id}-qty` ? (
-                          <input autoFocus className="ginput" style={{ width: 42 }} value={item.qty}
-                            onChange={e => updateItem(item.id, "qty", e.target.value)}
-                            onBlur={() => setEditingId(null)}
-                            onKeyDown={e => e.key === "Enter" && setEditingId(null)} />
-                        ) : (
-                          <span className="iqty" style={{ minWidth: 28 }} onClick={() => setEditingId(`${item.id}-qty`)}>{item.qty}</span>
-                        )}
-                        <select className="gsel" style={{ width: 90, fontSize: 10, padding: "4px 5px", flexShrink: 0 }}
-                          value={item.unit || "—"} onChange={e => updateItem(item.id, "unit", e.target.value)}>
-                          {UNITS.map(u => <option key={u}>{u}</option>)}
-                        </select>
-                        <select className="gsel" style={{ width: "auto", fontSize: 10, padding: "4px 6px" }}
-                          value={item.category} onChange={e => updateItem(item.id, "category", e.target.value)}>
-                          {STORE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                        </select>
-                        <button className="btn-danger" style={{ padding: "5px 10px", flexShrink: 0 }} onClick={() => removeItem(item.id)}>✕</button>
+                        <span className={`iname ${item.checkedAt ? "cross" : ""}`} onClick={() => setEditingId(`${item.id}-name`)}>
+                          {editingId === `${item.id}-name` ? (
+                            <input autoFocus className="ginput" style={{ width: "100%" }} value={item.name}
+                              onChange={e => updateItem(item.id, "name", e.target.value)}
+                              onBlur={() => setEditingId(null)}
+                              onKeyDown={e => e.key === "Enter" && setEditingId(null)} />
+                          ) : item.name}
+                        </span>
+                        <span className="imeta">
+                          {editingId === `${item.id}-qty` ? (
+                            <input autoFocus className="ginput" style={{ width: 42 }} value={item.qty}
+                              onChange={e => updateItem(item.id, "qty", e.target.value)}
+                              onBlur={() => setEditingId(null)}
+                              onKeyDown={e => e.key === "Enter" && setEditingId(null)} />
+                          ) : (
+                            <span className="iqty" onClick={() => setEditingId(`${item.id}-qty`)}>{item.qty}</span>
+                          )}
+                          {item.unit && item.unit !== "—" && <span className="iunit">{item.unit}</span>}
+                        </span>
+                        <button className="btn-danger" style={{ padding: "6px 10px", flexShrink: 0, fontSize: 13 }} onClick={() => removeItem(item.id)}>✕</button>
                       </div>
                     ))}
                   </div>
@@ -1548,6 +1642,41 @@ Return ONLY the JSON, nothing else.`;
           </div>
         )}
       </main>
+
+      {/* ── STAPLES MODAL ── */}
+      {showStaples && (
+        <div className="modal-overlay" onClick={() => setShowStaples(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 3, color: "#d4a843", textTransform: "uppercase", marginBottom: 4 }}>⭐ Weekly Staples</div>
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 13, color: "#907848", marginBottom: 20 }}>These items repopulate your shopping list every Monday. Edit quantities or remove items as needed.</div>
+            {staples.map((staple, idx) => (
+              <div key={staple.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, color: "#e8dfc8", flex: 1 }}>{staple.name}</span>
+                <input className="ginput" value={staple.qty} placeholder="Qty"
+                  onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, qty: e.target.value } : s))}
+                  style={{ width: 48, textAlign: "center", fontSize: 14 }} />
+                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#907848", minWidth: 32 }}>{staple.unit}</span>
+                <button className="btn-danger" style={{ padding: "4px 8px", fontSize: 12 }}
+                  onClick={() => setStaples(p => p.filter((_, i) => i !== idx))}>✕</button>
+              </div>
+            ))}
+            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+              <button className="btn-ghost" onClick={() => {
+                setShoppingList(prev => {
+                  const updated = [...prev];
+                  staples.forEach(staple => {
+                    const alreadyThere = updated.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
+                    if (!alreadyThere) updated.push({ ...staple, id: uid(), checkedAt: null });
+                  });
+                  return updated;
+                });
+                setShowStaples(false);
+              }}>Add to List Now</button>
+              <button className="btn-save" onClick={() => setShowStaples(false)}>Done</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
