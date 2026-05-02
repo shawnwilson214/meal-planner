@@ -1,17 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { initializeApp } from "firebase/app";
-import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
-
-const firebaseConfig = {
-  apiKey: "AIzaSyDms_6ZzLw2HNud4MkkHvRO8K0yOuFmzo8",
-  authDomain: "meal-planner-5452b.firebaseapp.com",
-  projectId: "meal-planner-5452b",
-  storageBucket: "meal-planner-5452b.firebasestorage.app",
-  messagingSenderId: "917629812611",
-  appId: "1:917629812611:web:d77b2d27958564aa1f00b6",
-};
-const firebaseApp = initializeApp(firebaseConfig);
-const db = getFirestore(firebaseApp);
+import { db } from "./firebase";
+import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 
 const STORE_CATEGORIES = [
   "Produce","Meat & Seafood","Dairy & Eggs","Bakery & Bread",
@@ -232,7 +221,7 @@ const css = `
   .flbl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b09060;text-transform:uppercase;margin-bottom:5px;}
 
   /* RECIPE CARDS */
-  .rgrid{display:grid;grid-template-columns:1fr;gap:16px;}
+  .rgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
   .rcard{background:linear-gradient(135deg,#191410,#101008);border:1px solid rgba(180,150,60,0.18);padding:18px;transition:border-color 0.25s;}
   .rcard:hover{border-color:rgba(180,150,60,0.4);}
   .rname{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:18px;font-weight:300;color:#f0e4c0;margin-bottom:6px;}
@@ -290,7 +279,7 @@ const css = `
 `;
 
 // Proper collapsible recipe card using ref-measured height
-function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, onEdit, onDelete, isEditing, UNITS, STORE_CATEGORIES }) {
+function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, onEdit, onDelete, UNITS, STORE_CATEGORIES }) {
   const bodyRef = useRef(null);
   const type = recipe.recipeType || "Entrée";
 
@@ -309,7 +298,7 @@ function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, on
             {printSelected && <span style={{ color: "#b8963c", fontSize: 9 }}>✓</span>}
           </div>
           <button className="btn-ghost" style={{ padding: "3px 10px", fontSize: 9 }} onClick={onEdit}>Edit</button>
-          {isEditing && <button className="btn-danger" style={{ padding: "3px 8px", fontSize: 9 }} onClick={onDelete}>✕</button>}
+          <button className="btn-danger" style={{ padding: "3px 8px", fontSize: 9 }} onClick={onDelete}>✕</button>
           <span className={`rcard-toggle ${isOpen ? "open" : ""}`}>▼</span>
         </div>
       </div>
@@ -359,21 +348,17 @@ function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, on
 
 export default function App() {
   const [tab, setTab] = useState("planner");
-  const [dbReady, setDbReady] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [recipes, setRecipes] = useState(SAMPLE_RECIPES);
-  const recipesRef = useRef(SAMPLE_RECIPES);
-  const [collapsedCards, setCollapsedCards] = useState(() =>
-    Object.fromEntries(SAMPLE_RECIPES.map(r => [r.id, true]))
-  );
+  const [collapsedCards, setCollapsedCards] = useState({});
   const [printSelected, setPrintSelected] = useState({});
   const [restaurants, setRestaurants] = useState(SAMPLE_RESTAURANTS);
   const [newRestaurant, setNewRestaurant] = useState("");
-  const [activeWeek, setActiveWeek] = useState("this"); // "this" | "next"
-  const [mealPlan, setMealPlan] = useState({});       // this week
-  const [nextMealPlan, setNextMealPlan] = useState({}); // next week
+  const [activeWeek, setActiveWeek] = useState("this");
+  const [mealPlan, setMealPlan] = useState({});
+  const [nextMealPlan, setNextMealPlan] = useState({});
   const [draftPlan, setDraftPlan] = useState({});
-  const [recipeFilter, setRecipeFilter] = useState("all"); // "all" | "menu"
+  const [recipeFilter, setRecipeFilter] = useState("all");
   const [shoppingList, setShoppingList] = useState([]);
   const [dragItem, setDragItem] = useState(null);
   const [dragOver, setDragOver] = useState(null);
@@ -387,75 +372,85 @@ export default function App() {
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState("");
   const [newRecipe, setNewRecipe] = useState({ name: "", recipeType: "Entrée", notes: "", prepSteps: [""], cookSteps: [""], ingredients: [{ name: "", qty: "", unit: "—", category: "Produce" }] });
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem("wk_apikey") || "");
-  const [showApiKey, setShowApiKey] = useState(false);
   const [showAddRecipe, setShowAddRecipe] = useState(false);
-  const [pendingRecipe, setPendingRecipe] = useState(null); // recipe awaiting review/edit before save
-  const [editingRecipe, setEditingRecipe] = useState(null); // existing recipe being edited
+  const [pendingRecipe, setPendingRecipe] = useState(null);
+  const [editingRecipe, setEditingRecipe] = useState(null);
+  const [fbReady, setFbReady] = useState(false);
 
-  // Firestore real-time sync
+  // ── Firebase real-time listeners ──────────────────────────────────────────
+  // Each collection uses a single shared doc ("household") — no auth needed.
+  // We skip writing back while the listener is still loading initial data.
+  const fbLoaded = useRef({ recipes: false, mealPlan: false, nextMealPlan: false, shoppingList: false, restaurants: false });
+
   useEffect(() => {
-    const familyDoc = doc(db, "family", "shared");
+    const unsubs = [];
 
-    // Load initial data then subscribe to changes
-    const unsub = onSnapshot(familyDoc, (snap) => {
-      if (snap.exists()) {
-        const data = snap.data();
-        if (data.recipes) { setRecipes(data.recipes); recipesRef.current = data.recipes; }
-        if (data.mealPlan) setMealPlan(data.mealPlan);
-        if (data.nextMealPlan) setNextMealPlan(data.nextMealPlan);
-        if (data.shoppingList) setShoppingList(data.shoppingList);
-        if (data.restaurants) setRestaurants(data.restaurants);
-      } else {
-        // First time — seed with sample data
-        setDoc(familyDoc, {
-          recipes: SAMPLE_RECIPES,
-          mealPlan: {},
-          nextMealPlan: {},
-          shoppingList: [],
-          restaurants: SAMPLE_RESTAURANTS,
-        });
-      }
-      setDbReady(true);
+    const listen = (docPath, onData) => {
+      const ref = doc(db, ...docPath.split("/"));
+      const unsub = onSnapshot(ref, (snap) => {
+        if (snap.exists()) onData(snap.data());
+      }, (err) => console.error("Firestore error:", docPath, err));
+      unsubs.push(unsub);
+    };
+
+    listen("household/recipes", (data) => {
+      if (Array.isArray(data.list)) setRecipes(data.list);
+      fbLoaded.current.recipes = true;
+      checkReady();
     });
-    return () => unsub();
+    listen("household/mealPlan", (data) => {
+      if (data.plan) setMealPlan(data.plan);
+      fbLoaded.current.mealPlan = true;
+      checkReady();
+    });
+    listen("household/nextMealPlan", (data) => {
+      if (data.plan) setNextMealPlan(data.plan);
+      fbLoaded.current.nextMealPlan = true;
+      checkReady();
+    });
+    listen("household/shoppingList", (data) => {
+      if (Array.isArray(data.list)) setShoppingList(data.list);
+      fbLoaded.current.shoppingList = true;
+      checkReady();
+    });
+    listen("household/restaurants", (data) => {
+      if (Array.isArray(data.list)) setRestaurants(data.list);
+      fbLoaded.current.restaurants = true;
+      checkReady();
+    });
+
+    // After a timeout, mark ready anyway (handles empty docs on first run)
+    const timer = setTimeout(() => setFbReady(true), 3000);
+
+    function checkReady() {
+      const { recipes, mealPlan, nextMealPlan, shoppingList, restaurants } = fbLoaded.current;
+      if (recipes && mealPlan && nextMealPlan && shoppingList && restaurants) {
+        setFbReady(true);
+      }
+    }
+
+    return () => { unsubs.forEach(u => u()); clearTimeout(timer); };
   }, []);
 
-  // Save recipes to Firestore whenever they change (after initial load)
-  const saveRecipes = useCallback((updated) => {
-    setRecipes(updated);
-    setDoc(doc(db, "family", "shared"), { recipes: updated }, { merge: true });
-  }, []);
+  // ── Firebase write helpers ────────────────────────────────────────────────
+  const saveToFb = (docPath, data) => {
+    if (!fbReady) return;
+    setDoc(doc(db, ...docPath.split("/")), data, { merge: true })
+      .catch(err => console.error("Firestore write error:", docPath, err));
+  };
 
-  const saveMealPlan = useCallback((updated) => {
-    setMealPlan(updated);
-    setDoc(doc(db, "family", "shared"), { mealPlan: updated }, { merge: true });
-  }, []);
-
-  const saveNextMealPlan = useCallback((updated) => {
-    setNextMealPlan(updated);
-    setDoc(doc(db, "family", "shared"), { nextMealPlan: updated }, { merge: true });
-  }, []);
-
-  const saveShoppingList = useCallback((updated) => {
-    setShoppingList(updated);
-    setDoc(doc(db, "family", "shared"), { shoppingList: updated }, { merge: true });
-  }, []);
-
-  const saveRestaurants = useCallback((updated) => {
-    setRestaurants(updated);
-    setDoc(doc(db, "family", "shared"), { restaurants: updated }, { merge: true });
-  }, []);
+  // Sync state → Firestore whenever data changes (skip before initial load)
+  useEffect(() => { if (fbReady) saveToFb("household/recipes", { list: recipes }); }, [recipes, fbReady]);
+  useEffect(() => { if (fbReady) saveToFb("household/mealPlan", { plan: mealPlan }); }, [mealPlan, fbReady]);
+  useEffect(() => { if (fbReady) saveToFb("household/nextMealPlan", { plan: nextMealPlan }); }, [nextMealPlan, fbReady]);
+  useEffect(() => { if (fbReady) saveToFb("household/shoppingList", { list: shoppingList }); }, [shoppingList, fbReady]);
+  useEffect(() => { if (fbReady) saveToFb("household/restaurants", { list: restaurants }); }, [restaurants, fbReady]);
 
   // Auto-purge checked items after 24h
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setShoppingList(prev => {
-        const updated = prev.filter(i => !i.checkedAt || (now - i.checkedAt) < CHECK_TTL);
-        setDoc(doc(db, "family", "shared"), { shoppingList: updated }, { merge: true });
-        return updated;
-      });
+      setShoppingList(prev => prev.filter(i => !i.checkedAt || (now - i.checkedAt) < CHECK_TTL));
     }, 60000);
     return () => clearInterval(interval);
   }, []);
@@ -474,16 +469,17 @@ export default function App() {
     setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); return {...prev,[k]:{...s,extras:s.extras.filter((_,i)=>i!==idx)}}; });
 
   const currentMealPlan = activeWeek === "this" ? mealPlan : nextMealPlan;
-  const saveCurrentMealPlan = activeWeek === "this" ? saveMealPlan : saveNextMealPlan;
+  const setCurrentMealPlan = activeWeek === "this" ? setMealPlan : setNextMealPlan;
 
   const enterEdit = () => { setDraftPlan(JSON.parse(JSON.stringify(currentMealPlan))); setEditMode(true); };
   const cancelEdit = () => { setDraftPlan({}); setEditMode(false); };
 
   const saveEdit = () => {
-    saveCurrentMealPlan(draftPlan);
+    setCurrentMealPlan(draftPlan);
+    // Only rebuild shopping list from this week's plan
     const planForShopping = activeWeek === "this" ? draftPlan : mealPlan;
     const newList = buildShoppingList(planForShopping, recipes, shoppingList);
-    saveShoppingList(newList);
+    setShoppingList(newList);
     setDraftPlan({});
     setEditMode(false);
   };
@@ -493,20 +489,17 @@ export default function App() {
 
   // Shopping list
   const toggleCheck = (id) => {
-    const updated = shoppingList.map(item => {
+    setShoppingList(prev => prev.map(item => {
       if (item.id !== id) return item;
-      return { ...item, checkedAt: item.checkedAt ? null : Date.now() };
-    });
-    saveShoppingList(updated);
+      const now = Date.now();
+      return { ...item, checkedAt: item.checkedAt ? null : now };
+    }));
   };
-  const updateItem = (id, field, value) => {
-    const updated = shoppingList.map(i => i.id === id ? { ...i, [field]: value } : i);
-    saveShoppingList(updated);
-  };
-  const removeItem = (id) => saveShoppingList(shoppingList.filter(i => i.id !== id));
+  const updateItem = (id, field, value) => setShoppingList(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i));
+  const removeItem = (id) => setShoppingList(prev => prev.filter(i => i.id !== id));
   const addManualItem = () => {
     if (!newManualItem.name.trim()) return;
-    saveShoppingList([...shoppingList, { ...newManualItem, id: uid(), checkedAt: null }]);
+    setShoppingList(prev => [...prev, { ...newManualItem, id: uid(), checkedAt: null }]);
     setNewManualItem({ name: "", qty: "1", unit: "—", category: "Produce" });
   };
 
@@ -537,7 +530,7 @@ export default function App() {
       @media print{body{padding:20px 32px;}@page{margin:0.5in;size:letter portrait;}}
     </style></head><body>
       <h1>The Wilson's Kitchen</h1>
-
+      <div class="sub">Thornton, Colorado</div>
       <div class="date">${date}</div>
       <div class="divider"></div>
       ${Object.entries(grouped).map(([cat, items]) => `
@@ -589,7 +582,7 @@ export default function App() {
       .notes-txt{font-style:italic;font-size:13px;color:#5a4030;line-height:1.5;white-space:pre-wrap;}
       @media print{body{padding:20px 32px;}@page{margin:0.5in;size:letter portrait;}.recipe{page-break-inside:avoid;}}
     </style></head><body>
-      <div class="site-hdr"><h1>The Wilson's Kitchen</h1></div>
+      <div class="site-hdr"><h1>The Wilson's Kitchen</h1><div class="sub">Thornton, Colorado</div></div>
       ${selected.map(r => `
         <div class="recipe">
           <div class="recipe-name">${r.name}</div>
@@ -627,12 +620,14 @@ export default function App() {
   const handleDrop = (e, targetId) => {
     e.preventDefault();
     if (dragItem === targetId) return;
-    const list = [...shoppingList];
-    const from = list.findIndex(i => i.id === dragItem);
-    const to = list.findIndex(i => i.id === targetId);
-    const [moved] = list.splice(from, 1);
-    list.splice(to, 0, moved);
-    saveShoppingList(list);
+    setShoppingList(prev => {
+      const list = [...prev];
+      const from = list.findIndex(i => i.id === dragItem);
+      const to = list.findIndex(i => i.id === targetId);
+      const [moved] = list.splice(from, 1);
+      list.splice(to, 0, moved);
+      return list;
+    });
     setDragItem(null); setDragOver(null);
   };
   const handleDragEnd = () => { setDragItem(null); setDragOver(null); };
@@ -641,7 +636,6 @@ export default function App() {
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    if (!apiKey.trim()) { setImageError("Please enter your Anthropic API key above first."); return; }
     setImageError(""); setImageLoading(true);
 
     const isPdf = file.type === "application/pdf";
@@ -655,11 +649,6 @@ export default function App() {
         reader.readAsDataURL(file);
       });
 
-      const mediaType = isPdf ? "application/pdf" : (file.type || "image/jpeg");
-      const sourceBlock = isPdf
-        ? { type: "document", title: file.name || "recipe.pdf", source: { type: "base64", media_type: "application/pdf", data: base64 } }
-        : { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } };
-
       const prompt = `Extract the recipe from this ${isPdf ? "PDF" : "image"} and return ONLY valid JSON, no markdown fences, no explanation:
 {"name":"Recipe Name","recipeType":"Entrée","notes":"any tips or serving suggestions","steps":["Step 1","Step 2"],"ingredients":[{"name":"ingredient","qty":"1","unit":"cup","category":"Produce"}]}
 Rules:
@@ -670,27 +659,53 @@ Rules:
 - qty as a string like "1", "1/2", "2.5"
 Return ONLY the JSON object.`;
 
+      // Build content blocks — PDFs use document type, images use image type
+      const fileBlock = isPdf
+        ? {
+            type: "document",
+            source: { type: "base64", media_type: "application/pdf", data: base64 },
+          }
+        : {
+            type: "image",
+            source: { type: "base64", media_type: file.type || "image/jpeg", data: base64 },
+          };
+
+      const reqBody = {
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 4000,
+        messages: [{ role: "user", content: [fileBlock, { type: "text", text: prompt }] }],
+      };
+
       const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST", headers: {
-          "Content-Type": "application/json",
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "x-api-key": apiKey
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-20250514", max_tokens: 4000,
-          messages: [{ role: "user", content: [sourceBlock, { type: "text", text: prompt }] }]
-        })
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(reqBody),
       });
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}));
-        throw new Error(`API ${response.status}: ${errData?.error?.message || "unknown error"}`);
-      }
       const data = await response.json();
+
+      // Surface API-level errors clearly
+      if (!response.ok || data.error) {
+        const msg = data?.error?.message || `API error ${response.status}`;
+        console.error("API error:", data);
+        setImageError(`API error: ${msg}`);
+        return;
+      }
+
       const text = (data.content || []).filter(b => b.type === "text").map(b => b.text).join("");
+      if (!text) {
+        console.error("Empty response:", data);
+        setImageError("No response from AI. Check console for details.");
+        return;
+      }
+
       const match = text.replace(/```json|```/g, "").match(/\{[\s\S]*\}/);
-      if (!match) throw new Error("No JSON");
+      if (!match) {
+        console.error("No JSON in response:", text);
+        setImageError("Could not parse recipe from that file. Try a clearer image.");
+        return;
+      }
+
       const parsed = JSON.parse(match[0]);
       if (parsed.name && Array.isArray(parsed.ingredients)) {
         setPendingRecipe({ ...parsed, id: uid() });
@@ -700,7 +715,7 @@ Return ONLY the JSON object.`;
       }
     } catch (err) {
       console.error("File upload error:", err);
-      setImageError(`Something went wrong: ${err.message}`);
+      setImageError(`Error: ${err.message}`);
     } finally {
       setImageLoading(false);
       e.target.value = "";
@@ -733,12 +748,7 @@ Return ONLY the JSON, nothing else.`;
 
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "anthropic-version": "2023-06-01",
-          "anthropic-dangerous-direct-browser-access": "true",
-          "x-api-key": apiKey
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: "claude-sonnet-4-20250514",
           max_tokens: 4000,
@@ -765,12 +775,7 @@ Return ONLY the JSON, nothing else.`;
         // Make a second call with the tool result (we pass the URL as the search query result)
         const response2 = await fetch("https://api.anthropic.com/v1/messages", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "anthropic-version": "2023-06-01",
-            "anthropic-dangerous-direct-browser-access": "true",
-            "x-api-key": apiKey
-          },
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             model: "claude-sonnet-4-20250514",
             max_tokens: 4000,
@@ -838,9 +843,7 @@ Return ONLY the JSON, nothing else.`;
     setPendingRecipe(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== idx) }));
   const savePendingRecipe = () => {
     if (!pendingRecipe?.name?.trim()) return;
-    const updated = [...recipes, pendingRecipe];
-    saveRecipes(updated);
-    setCollapsedCards(prev => ({ ...prev, [pendingRecipe.id]: true }));
+    setRecipes(prev => [...prev, pendingRecipe]);
     setPendingRecipe(null);
   };
 
@@ -855,7 +858,7 @@ Return ONLY the JSON, nothing else.`;
     setEditingRecipe(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== idx) }));
   const saveEditingRecipe = () => {
     if (!editingRecipe?.name?.trim()) return;
-    saveRecipes(recipes.map(r => r.id === editingRecipe.id ? editingRecipe : r));
+    setRecipes(prev => prev.map(r => r.id === editingRecipe.id ? editingRecipe : r));
     setEditingRecipe(null);
   };
 
@@ -979,10 +982,18 @@ Return ONLY the JSON, nothing else.`;
     );
   };
 
-  if (!dbReady) return (
-    <div style={{ minHeight: "100vh", background: "#0d0b07", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
-      <div style={{ fontSize: 28, color: "#b8963c", animation: "spin 1.5s linear infinite" }}>◆</div>
-      <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 3, color: "#6a5c40", textTransform: "uppercase" }}>Loading...</div>
+  // Show loading screen while Firebase syncs
+  if (!fbReady) return (
+    <div style={{ minHeight: "100vh", background: "#0e0c09", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+      <style>{css}</style>
+      <div style={{ fontFamily: "'Cinzel',serif", fontSize: 28, fontWeight: 700, color: "#d4a843", letterSpacing: 5 }}>The Wilson's Kitchen</div>
+      <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 13, color: "#8a7a50", letterSpacing: 3 }}>Thornton, Colorado</div>
+      <div style={{ marginTop: 24, display: "flex", gap: 8, alignItems: "center" }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#b8963c", animation: "pulse 1.2s ease-in-out 0s infinite" }} />
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#b8963c", animation: "pulse 1.2s ease-in-out 0.2s infinite" }} />
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#b8963c", animation: "pulse 1.2s ease-in-out 0.4s infinite" }} />
+      </div>
+      <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 3, color: "#5a4e30", textTransform: "uppercase", marginTop: 4 }}>Loading your kitchen…</div>
     </div>
   );
 
@@ -992,7 +1003,7 @@ Return ONLY the JSON, nothing else.`;
 
       <header className="header">
         <div className="logo">The Wilson's Kitchen</div>
-
+        <div className="logo-sub">Thornton, Colorado</div>
         <div className="divider">
           <div className="divider-line" />
           <span style={{ color: "#b8963c", fontSize: 8 }}>◆</span>
@@ -1088,7 +1099,7 @@ Return ONLY the JSON, nothing else.`;
                   <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 3, color: "#5a4e30", textTransform: "uppercase", marginBottom: 10 }}>🍽 Favorite Restaurants</div>
                   <div style={{ marginBottom: 10 }}>
                     {restaurants.map(r => (
-                      <span key={r} className="rest-tag" title="Click to remove" onClick={() => saveRestaurants(restaurants.filter(x => x !== r))}>
+                      <span key={r} className="rest-tag" title="Click to remove" onClick={() => setRestaurants(p => p.filter(x => x !== r))}>
                         {r} &nbsp;✕
                       </span>
                     ))}
@@ -1096,8 +1107,8 @@ Return ONLY the JSON, nothing else.`;
                   <div style={{ display: "flex", gap: 8 }}>
                     <input className="ginput" placeholder="Add a restaurant..." value={newRestaurant}
                       onChange={e => setNewRestaurant(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && newRestaurant.trim()) { saveRestaurants([...restaurants, newRestaurant.trim()]); setNewRestaurant(""); }}} />
-                    <button className="btn-ghost" onClick={() => { if (newRestaurant.trim()) { saveRestaurants([...restaurants, newRestaurant.trim()]); setNewRestaurant(""); }}}>+ Add</button>
+                      onKeyDown={e => { if (e.key === "Enter" && newRestaurant.trim()) { setRestaurants(p => [...p, newRestaurant.trim()]); setNewRestaurant(""); }}} />
+                    <button className="btn-ghost" onClick={() => { if (newRestaurant.trim()) { setRestaurants(p => [...p, newRestaurant.trim()]); setNewRestaurant(""); }}}>+ Add</button>
                   </div>
                 </div>
               </>
@@ -1113,6 +1124,70 @@ Return ONLY the JSON, nothing else.`;
             <div className="ssub">{recipes.length} recipes saved</div>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 14, marginBottom: 28 }}>
+
+              {/* Image / PDF upload */}
+              <div className="ibox" style={{ padding: "22px", cursor: "pointer", borderStyle: "dashed", textAlign: "center", transition: "all 0.25s" }}
+                onClick={() => !imageLoading && imageInputRef.current.click()}
+                onDragOver={e => e.preventDefault()}
+                onDrop={e => {
+                  e.preventDefault();
+                  const f = e.dataTransfer.files[0];
+                  if (f && (f.type.startsWith("image/") || f.type === "application/pdf")) {
+                    handleImageUpload({ target: { files: [f], value: "" } });
+                  }
+                }}>
+                <input ref={imageInputRef} type="file" accept="image/*,application/pdf" style={{ display: "none" }} onChange={handleImageUpload} />
+                {imageLoading ? (
+                  <div>
+                    <div style={{ fontSize: 18, color: "#b8963c", animation: "spin 1.5s linear infinite", display: "inline-block", marginBottom: 6 }}>◆</div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#b8963c", textTransform: "uppercase" }}>Reading your recipe...</div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ fontSize: 22, marginBottom: 6 }}>
+                      <span style={{ color: "#b8963c", opacity: 0.5 }}>📷</span>
+                      <span style={{ color: "#b8963c", opacity: 0.5, marginLeft: 8 }}>📄</span>
+                    </div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#b09060", textTransform: "uppercase", marginBottom: 4 }}>Upload Recipe Photo or PDF</div>
+                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#907848" }}>Click or drag an image, cookbook page, handwritten note, or PDF</div>
+                  </div>
+                )}
+                {imageError && <div style={{ marginTop: 8, fontSize: 11, color: "#c06060", fontStyle: "italic" }}>{imageError}</div>}
+              </div>
+
+              {/* Divider */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.12)" }} />
+                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#6a5c40", textTransform: "uppercase" }}>or</span>
+                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.12)" }} />
+              </div>
+
+              {/* URL import */}
+              <div className="ibox" style={{ padding: "20px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                  <span style={{ fontSize: 18, color: "#b8963c", opacity: 0.4 }}>🔗</span>
+                  <div>
+                    <div style={{ fontFamily: "'Cinzel',serif", fontSize: 9, letterSpacing: 2, color: "#8a7850", textTransform: "uppercase" }}>Import from URL</div>
+                    <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 11, color: "#6a5c40", marginTop: 2 }}>AllRecipes, Food Network, NYT Cooking, any recipe site</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <input className="ginput" placeholder="https://www.allrecipes.com/recipe/..." value={urlInput}
+                    onChange={e => setUrlInput(e.target.value)}
+                    onKeyDown={e => e.key === "Enter" && handleUrlExtract()} />
+                  <button className="btn-gold" onClick={handleUrlExtract} disabled={urlLoading} style={{ whiteSpace: "nowrap", flexShrink: 0, opacity: urlLoading ? 0.6 : 1 }}>
+                    {urlLoading ? <span style={{ animation: "spin 1.5s linear infinite", display: "inline-block" }}>◆</span> : "Extract"}
+                  </button>
+                </div>
+                {urlError && <div style={{ marginTop: 8, fontSize: 11, color: "#904040", fontStyle: "italic" }}>{urlError}</div>}
+              </div>
+
+              {/* Divider */}
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.08)" }} />
+                <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#2e2818", textTransform: "uppercase" }}>or</span>
+                <div style={{ flex: 1, height: 1, background: "rgba(180,150,60,0.08)" }} />
+              </div>
 
               {/* Manual */}
               <div className="ibox" style={{ padding: "20px" }}>
@@ -1399,8 +1474,7 @@ Return ONLY the JSON, nothing else.`;
                           printSelected={!!printSelected[recipe.id]}
                           onPrintToggle={() => setPrintSelected(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}
                           onEdit={() => { setPendingRecipe(null); startEditRecipe(recipe); }}
-                          onDelete={() => saveRecipes(recipes.filter(r => r.id !== recipe.id))}
-                          isEditing={isEditing}
+                          onDelete={() => setRecipes(p => p.filter(r => r.id !== recipe.id))}
                           UNITS={UNITS}
                           STORE_CATEGORIES={STORE_CATEGORIES}
                         />
@@ -1423,11 +1497,10 @@ Return ONLY the JSON, nothing else.`;
             {/* Add manual item */}
             <div style={{ padding: "18px 20px", border: "1px solid rgba(180,150,60,0.12)", background: "rgba(180,150,60,0.02)", marginBottom: 20 }}>
               <div className="flbl" style={{ marginBottom: 10 }}>Add Item Manually</div>
-              <input className="ginput" placeholder="Item name..." value={newManualItem.name}
-                onChange={e => setNewManualItem(p => ({ ...p, name: e.target.value }))}
-                onKeyDown={e => e.key === "Enter" && addManualItem()}
-                style={{ marginBottom: 10 }} />
-              <div style={{ display: "grid", gridTemplateColumns: "70px 1fr 1fr auto", gap: 8, alignItems: "end" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "2fr 80px 120px 1.5fr auto", gap: 10, alignItems: "end" }}>
+                <input className="ginput" placeholder="Item name..." value={newManualItem.name}
+                  onChange={e => setNewManualItem(p => ({ ...p, name: e.target.value }))}
+                  onKeyDown={e => e.key === "Enter" && addManualItem()} />
                 <input className="ginput" placeholder="Qty" value={newManualItem.qty}
                   onChange={e => setNewManualItem(p => ({ ...p, qty: e.target.value }))} />
                 <select className="gsel" value={newManualItem.unit}
@@ -1445,8 +1518,8 @@ Return ONLY the JSON, nothing else.`;
             {shoppingList.length > 0 && (
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
                 <button className="btn-ghost" onClick={printShoppingList}>🖨 Print List</button>
-                <button className="btn-ghost" onClick={() => saveShoppingList(shoppingList.map(i => ({ ...i, checkedAt: null })))}>Uncheck All</button>
-                <button className="btn-danger" onClick={() => saveShoppingList([])}>Clear List</button>
+                <button className="btn-ghost" onClick={() => setShoppingList(p => p.map(i => ({ ...i, checkedAt: null })))}>Uncheck All</button>
+                <button className="btn-danger" onClick={() => setShoppingList([])}>Clear List</button>
               </div>
             )}
 
