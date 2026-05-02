@@ -1,4 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { initializeApp } from "firebase/app";
+import { getFirestore, doc, setDoc, onSnapshot } from "firebase/firestore";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDms_6ZzLw2HNud4MkkHvRO8K0yOuFmzo8",
+  authDomain: "meal-planner-5452b.firebaseapp.com",
+  projectId: "meal-planner-5452b",
+  storageBucket: "meal-planner-5452b.firebasestorage.app",
+  messagingSenderId: "917629812611",
+  appId: "1:917629812611:web:d77b2d27958564aa1f00b6",
+};
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
 
 const STORE_CATEGORIES = [
   "Produce","Meat & Seafood","Dairy & Eggs","Bakery & Bread",
@@ -346,8 +359,10 @@ function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, on
 
 export default function App() {
   const [tab, setTab] = useState("planner");
+  const [dbReady, setDbReady] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [recipes, setRecipes] = useState(SAMPLE_RECIPES);
+  const recipesRef = useRef(SAMPLE_RECIPES);
   const [collapsedCards, setCollapsedCards] = useState(() =>
     Object.fromEntries(SAMPLE_RECIPES.map(r => [r.id, true]))
   );
@@ -378,11 +393,69 @@ export default function App() {
   const [pendingRecipe, setPendingRecipe] = useState(null); // recipe awaiting review/edit before save
   const [editingRecipe, setEditingRecipe] = useState(null); // existing recipe being edited
 
+  // Firestore real-time sync
+  useEffect(() => {
+    const familyDoc = doc(db, "family", "shared");
+
+    // Load initial data then subscribe to changes
+    const unsub = onSnapshot(familyDoc, (snap) => {
+      if (snap.exists()) {
+        const data = snap.data();
+        if (data.recipes) { setRecipes(data.recipes); recipesRef.current = data.recipes; }
+        if (data.mealPlan) setMealPlan(data.mealPlan);
+        if (data.nextMealPlan) setNextMealPlan(data.nextMealPlan);
+        if (data.shoppingList) setShoppingList(data.shoppingList);
+        if (data.restaurants) setRestaurants(data.restaurants);
+      } else {
+        // First time — seed with sample data
+        setDoc(familyDoc, {
+          recipes: SAMPLE_RECIPES,
+          mealPlan: {},
+          nextMealPlan: {},
+          shoppingList: [],
+          restaurants: SAMPLE_RESTAURANTS,
+        });
+      }
+      setDbReady(true);
+    });
+    return () => unsub();
+  }, []);
+
+  // Save recipes to Firestore whenever they change (after initial load)
+  const saveRecipes = useCallback((updated) => {
+    setRecipes(updated);
+    setDoc(doc(db, "family", "shared"), { recipes: updated }, { merge: true });
+  }, []);
+
+  const saveMealPlan = useCallback((updated) => {
+    setMealPlan(updated);
+    setDoc(doc(db, "family", "shared"), { mealPlan: updated }, { merge: true });
+  }, []);
+
+  const saveNextMealPlan = useCallback((updated) => {
+    setNextMealPlan(updated);
+    setDoc(doc(db, "family", "shared"), { nextMealPlan: updated }, { merge: true });
+  }, []);
+
+  const saveShoppingList = useCallback((updated) => {
+    setShoppingList(updated);
+    setDoc(doc(db, "family", "shared"), { shoppingList: updated }, { merge: true });
+  }, []);
+
+  const saveRestaurants = useCallback((updated) => {
+    setRestaurants(updated);
+    setDoc(doc(db, "family", "shared"), { restaurants: updated }, { merge: true });
+  }, []);
+
   // Auto-purge checked items after 24h
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setShoppingList(prev => prev.filter(i => !i.checkedAt || (now - i.checkedAt) < CHECK_TTL));
+      setShoppingList(prev => {
+        const updated = prev.filter(i => !i.checkedAt || (now - i.checkedAt) < CHECK_TTL);
+        setDoc(doc(db, "family", "shared"), { shoppingList: updated }, { merge: true });
+        return updated;
+      });
     }, 60000);
     return () => clearInterval(interval);
   }, []);
@@ -401,17 +474,16 @@ export default function App() {
     setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); return {...prev,[k]:{...s,extras:s.extras.filter((_,i)=>i!==idx)}}; });
 
   const currentMealPlan = activeWeek === "this" ? mealPlan : nextMealPlan;
-  const setCurrentMealPlan = activeWeek === "this" ? setMealPlan : setNextMealPlan;
+  const saveCurrentMealPlan = activeWeek === "this" ? saveMealPlan : saveNextMealPlan;
 
   const enterEdit = () => { setDraftPlan(JSON.parse(JSON.stringify(currentMealPlan))); setEditMode(true); };
   const cancelEdit = () => { setDraftPlan({}); setEditMode(false); };
 
   const saveEdit = () => {
-    setCurrentMealPlan(draftPlan);
-    // Only rebuild shopping list from this week's plan
+    saveCurrentMealPlan(draftPlan);
     const planForShopping = activeWeek === "this" ? draftPlan : mealPlan;
     const newList = buildShoppingList(planForShopping, recipes, shoppingList);
-    setShoppingList(newList);
+    saveShoppingList(newList);
     setDraftPlan({});
     setEditMode(false);
   };
@@ -421,17 +493,20 @@ export default function App() {
 
   // Shopping list
   const toggleCheck = (id) => {
-    setShoppingList(prev => prev.map(item => {
+    const updated = shoppingList.map(item => {
       if (item.id !== id) return item;
-      const now = Date.now();
-      return { ...item, checkedAt: item.checkedAt ? null : now };
-    }));
+      return { ...item, checkedAt: item.checkedAt ? null : Date.now() };
+    });
+    saveShoppingList(updated);
   };
-  const updateItem = (id, field, value) => setShoppingList(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i));
-  const removeItem = (id) => setShoppingList(prev => prev.filter(i => i.id !== id));
+  const updateItem = (id, field, value) => {
+    const updated = shoppingList.map(i => i.id === id ? { ...i, [field]: value } : i);
+    saveShoppingList(updated);
+  };
+  const removeItem = (id) => saveShoppingList(shoppingList.filter(i => i.id !== id));
   const addManualItem = () => {
     if (!newManualItem.name.trim()) return;
-    setShoppingList(prev => [...prev, { ...newManualItem, id: uid(), checkedAt: null }]);
+    saveShoppingList([...shoppingList, { ...newManualItem, id: uid(), checkedAt: null }]);
     setNewManualItem({ name: "", qty: "1", unit: "—", category: "Produce" });
   };
 
@@ -552,14 +627,12 @@ export default function App() {
   const handleDrop = (e, targetId) => {
     e.preventDefault();
     if (dragItem === targetId) return;
-    setShoppingList(prev => {
-      const list = [...prev];
-      const from = list.findIndex(i => i.id === dragItem);
-      const to = list.findIndex(i => i.id === targetId);
-      const [moved] = list.splice(from, 1);
-      list.splice(to, 0, moved);
-      return list;
-    });
+    const list = [...shoppingList];
+    const from = list.findIndex(i => i.id === dragItem);
+    const to = list.findIndex(i => i.id === targetId);
+    const [moved] = list.splice(from, 1);
+    list.splice(to, 0, moved);
+    saveShoppingList(list);
     setDragItem(null); setDragOver(null);
   };
   const handleDragEnd = () => { setDragItem(null); setDragOver(null); };
@@ -765,7 +838,8 @@ Return ONLY the JSON, nothing else.`;
     setPendingRecipe(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== idx) }));
   const savePendingRecipe = () => {
     if (!pendingRecipe?.name?.trim()) return;
-    setRecipes(prev => [...prev, pendingRecipe]);
+    const updated = [...recipes, pendingRecipe];
+    saveRecipes(updated);
     setCollapsedCards(prev => ({ ...prev, [pendingRecipe.id]: true }));
     setPendingRecipe(null);
   };
@@ -781,7 +855,7 @@ Return ONLY the JSON, nothing else.`;
     setEditingRecipe(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== idx) }));
   const saveEditingRecipe = () => {
     if (!editingRecipe?.name?.trim()) return;
-    setRecipes(prev => prev.map(r => r.id === editingRecipe.id ? editingRecipe : r));
+    saveRecipes(recipes.map(r => r.id === editingRecipe.id ? editingRecipe : r));
     setEditingRecipe(null);
   };
 
@@ -905,6 +979,13 @@ Return ONLY the JSON, nothing else.`;
     );
   };
 
+  if (!dbReady) return (
+    <div style={{ minHeight: "100vh", background: "#0d0b07", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 16 }}>
+      <div style={{ fontSize: 28, color: "#b8963c", animation: "spin 1.5s linear infinite" }}>◆</div>
+      <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 3, color: "#6a5c40", textTransform: "uppercase" }}>Loading...</div>
+    </div>
+  );
+
   return (
     <div className="app">
       <style>{css}</style>
@@ -1007,7 +1088,7 @@ Return ONLY the JSON, nothing else.`;
                   <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 3, color: "#5a4e30", textTransform: "uppercase", marginBottom: 10 }}>🍽 Favorite Restaurants</div>
                   <div style={{ marginBottom: 10 }}>
                     {restaurants.map(r => (
-                      <span key={r} className="rest-tag" title="Click to remove" onClick={() => setRestaurants(p => p.filter(x => x !== r))}>
+                      <span key={r} className="rest-tag" title="Click to remove" onClick={() => saveRestaurants(restaurants.filter(x => x !== r))}>
                         {r} &nbsp;✕
                       </span>
                     ))}
@@ -1015,8 +1096,8 @@ Return ONLY the JSON, nothing else.`;
                   <div style={{ display: "flex", gap: 8 }}>
                     <input className="ginput" placeholder="Add a restaurant..." value={newRestaurant}
                       onChange={e => setNewRestaurant(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && newRestaurant.trim()) { setRestaurants(p => [...p, newRestaurant.trim()]); setNewRestaurant(""); }}} />
-                    <button className="btn-ghost" onClick={() => { if (newRestaurant.trim()) { setRestaurants(p => [...p, newRestaurant.trim()]); setNewRestaurant(""); }}}>+ Add</button>
+                      onKeyDown={e => { if (e.key === "Enter" && newRestaurant.trim()) { saveRestaurants([...restaurants, newRestaurant.trim()]); setNewRestaurant(""); }}} />
+                    <button className="btn-ghost" onClick={() => { if (newRestaurant.trim()) { saveRestaurants([...restaurants, newRestaurant.trim()]); setNewRestaurant(""); }}}>+ Add</button>
                   </div>
                 </div>
               </>
@@ -1318,7 +1399,7 @@ Return ONLY the JSON, nothing else.`;
                           printSelected={!!printSelected[recipe.id]}
                           onPrintToggle={() => setPrintSelected(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}
                           onEdit={() => { setPendingRecipe(null); startEditRecipe(recipe); }}
-                          onDelete={() => setRecipes(p => p.filter(r => r.id !== recipe.id))}
+                          onDelete={() => saveRecipes(recipes.filter(r => r.id !== recipe.id))}
                           isEditing={isEditing}
                           UNITS={UNITS}
                           STORE_CATEGORIES={STORE_CATEGORIES}
@@ -1364,8 +1445,8 @@ Return ONLY the JSON, nothing else.`;
             {shoppingList.length > 0 && (
               <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12 }}>
                 <button className="btn-ghost" onClick={printShoppingList}>🖨 Print List</button>
-                <button className="btn-ghost" onClick={() => setShoppingList(p => p.map(i => ({ ...i, checkedAt: null })))}>Uncheck All</button>
-                <button className="btn-danger" onClick={() => setShoppingList([])}>Clear List</button>
+                <button className="btn-ghost" onClick={() => saveShoppingList(shoppingList.map(i => ({ ...i, checkedAt: null })))}>Uncheck All</button>
+                <button className="btn-danger" onClick={() => saveShoppingList([])}>Clear List</button>
               </div>
             )}
 
