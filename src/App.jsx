@@ -200,16 +200,16 @@ const css = `
   .shop-list{border:1px solid rgba(180,150,60,0.18);background:linear-gradient(160deg,#121009,#0d0b07);}
   .cathdr{font-family:'Cinzel',serif;font-size:8px;letter-spacing:4px;color:#d4a843;text-transform:uppercase;padding:18px 16px 7px;border-top:1px solid rgba(180,150,60,0.1);}
   .cathdr:first-child{border-top:none;}
-  .sitem{display:flex;align-items:center;gap:10px;padding:11px 16px;border-bottom:1px solid rgba(180,150,60,0.08);transition:all 0.2s;cursor:grab;}
+  .sitem{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(180,150,60,0.08);transition:all 0.2s;cursor:grab;}
   .sitem:hover{background:rgba(180,150,60,0.03);}
   .sitem.dov{background:rgba(180,150,60,0.07);}
   .sitem.chk{opacity:0.4;}
-  .cbox{width:16px;height:16px;border:1px solid rgba(180,150,60,0.4);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
+  .cbox{width:24px;height:24px;border:1px solid rgba(180,150,60,0.4);background:transparent;cursor:pointer;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
   .cbox.on{background:rgba(180,150,60,0.2);border-color:#b8963c;}
-  .iname{flex:2;font-family:'Cormorant Garamond',serif;font-size:15px;color:#e8dfc8;cursor:text;}
+  .iname{flex:2;font-family:'Cormorant Garamond',serif;font-size:17px;color:#e8dfc8;cursor:text;}
   .iname.cross{text-decoration:line-through;color:#5a5038;}
-  .iqty{font-size:12px;color:#907848;font-style:italic;min-width:60px;cursor:text;}
-  .dh{color:rgba(180,150,60,0.35);font-size:11px;cursor:grab;user-select:none;flex-shrink:0;}
+  .iqty{font-size:13px;color:#907848;font-style:italic;min-width:60px;cursor:text;}
+  .dh{color:rgba(180,150,60,0.35);font-size:14px;cursor:grab;user-select:none;flex-shrink:0;}
 
   /* INPUTS */
   .ginput{width:100%;background:transparent;border:none;border-bottom:1px solid rgba(180,150,60,0.2);color:#e8dfc8;font-family:'Cormorant Garamond',serif;font-size:14px;padding:8px 3px;outline:none;transition:border-color 0.2s;}
@@ -374,74 +374,72 @@ export default function App() {
   const [editingRecipe, setEditingRecipe] = useState(null);
   const [fbReady, setFbReady] = useState(false);
 
-  // ── Firebase real-time listeners ──────────────────────────────────────────
-  // Each collection uses a single shared doc ("household") — no auth needed.
-  // We skip writing back while the listener is still loading initial data.
-  const fbLoaded = useRef({ recipes: false, mealPlan: false, nextMealPlan: false, shoppingList: false, restaurants: false });
+  // ── Firebase sync ─────────────────────────────────────────────────────────
+  // Strategy: for each collection, attach an onSnapshot listener.
+  // The FIRST snapshot (exists or not) marks that collection as "loaded".
+  // We only allow writes AFTER all collections have fired their first snapshot.
+  // This prevents the default state from overwriting saved Firestore data.
+
+  const fbLoaded = useRef({});
+  const COLLECTIONS = ["recipes", "mealPlan", "nextMealPlan", "shoppingList", "restaurants"];
+  const skipWrite = useRef({ recipes: true, mealPlan: true, nextMealPlan: true, shoppingList: true, restaurants: true });
 
   useEffect(() => {
     const unsubs = [];
 
-    const listen = (docPath, onData) => {
+    const markLoaded = (name) => {
+      fbLoaded.current[name] = true;
+      // Once all collections have fired their first snapshot, allow writes
+      if (COLLECTIONS.every(c => fbLoaded.current[c])) {
+        // Small delay so all setStates have settled before writes are allowed
+        setTimeout(() => {
+          COLLECTIONS.forEach(c => { skipWrite.current[c] = false; });
+          setFbReady(true);
+        }, 100);
+      }
+    };
+
+    const listen = (name, docPath, onData) => {
       const ref = doc(db, ...docPath.split("/"));
       const unsub = onSnapshot(ref, (snap) => {
-        if (snap.exists()) onData(snap.data());
-      }, (err) => console.error("Firestore error:", docPath, err));
+        if (snap.exists()) {
+          onData(snap.data());
+        }
+        // Mark loaded regardless of whether doc exists
+        if (!fbLoaded.current[name]) markLoaded(name);
+      }, (err) => {
+        console.error("Firestore listen error:", docPath, err);
+        if (!fbLoaded.current[name]) markLoaded(name);
+      });
       unsubs.push(unsub);
     };
 
-    listen("household/recipes", (data) => {
-      if (Array.isArray(data.list)) setRecipes(data.list);
-      fbLoaded.current.recipes = true;
-      checkReady();
-    });
-    listen("household/mealPlan", (data) => {
-      if (data.plan) setMealPlan(data.plan);
-      fbLoaded.current.mealPlan = true;
-      checkReady();
-    });
-    listen("household/nextMealPlan", (data) => {
-      if (data.plan) setNextMealPlan(data.plan);
-      fbLoaded.current.nextMealPlan = true;
-      checkReady();
-    });
-    listen("household/shoppingList", (data) => {
-      if (Array.isArray(data.list)) setShoppingList(data.list);
-      fbLoaded.current.shoppingList = true;
-      checkReady();
-    });
-    listen("household/restaurants", (data) => {
-      if (Array.isArray(data.list)) setRestaurants(data.list);
-      fbLoaded.current.restaurants = true;
-      checkReady();
-    });
+    listen("recipes",       "household/recipes",       (d) => { if (Array.isArray(d.list)) setRecipes(d.list); });
+    listen("mealPlan",      "household/mealPlan",      (d) => { if (d.plan)                setMealPlan(d.plan); });
+    listen("nextMealPlan",  "household/nextMealPlan",  (d) => { if (d.plan)                setNextMealPlan(d.plan); });
+    listen("shoppingList",  "household/shoppingList",  (d) => { if (Array.isArray(d.list)) setShoppingList(d.list); });
+    listen("restaurants",   "household/restaurants",   (d) => { if (Array.isArray(d.list)) setRestaurants(d.list); });
 
-    // After a timeout, mark ready anyway (handles empty docs on first run)
-    const timer = setTimeout(() => setFbReady(true), 3000);
+    // Safety fallback — if Firestore never responds (offline/blocked), unblock UI after 5s
+    const fallback = setTimeout(() => {
+      COLLECTIONS.forEach(c => { skipWrite.current[c] = false; });
+      setFbReady(true);
+    }, 5000);
 
-    function checkReady() {
-      const { recipes, mealPlan, nextMealPlan, shoppingList, restaurants } = fbLoaded.current;
-      if (recipes && mealPlan && nextMealPlan && shoppingList && restaurants) {
-        setFbReady(true);
-      }
-    }
-
-    return () => { unsubs.forEach(u => u()); clearTimeout(timer); };
+    return () => { unsubs.forEach(u => u()); clearTimeout(fallback); };
   }, []);
 
-  // ── Firebase write helpers ────────────────────────────────────────────────
-  const saveToFb = (docPath, data) => {
-    if (!fbReady) return;
-    setDoc(doc(db, ...docPath.split("/")), data, { merge: true })
+  // ── Write helpers — only fire after initial load, skip on first render ────
+  const saveToFb = useCallback((docPath, data) => {
+    setDoc(doc(db, ...docPath.split("/")), data)
       .catch(err => console.error("Firestore write error:", docPath, err));
-  };
+  }, []);
 
-  // Sync state → Firestore whenever data changes (skip before initial load)
-  useEffect(() => { if (fbReady) saveToFb("household/recipes", { list: recipes }); }, [recipes, fbReady]);
-  useEffect(() => { if (fbReady) saveToFb("household/mealPlan", { plan: mealPlan }); }, [mealPlan, fbReady]);
-  useEffect(() => { if (fbReady) saveToFb("household/nextMealPlan", { plan: nextMealPlan }); }, [nextMealPlan, fbReady]);
-  useEffect(() => { if (fbReady) saveToFb("household/shoppingList", { list: shoppingList }); }, [shoppingList, fbReady]);
-  useEffect(() => { if (fbReady) saveToFb("household/restaurants", { list: restaurants }); }, [restaurants, fbReady]);
+  useEffect(() => { if (!skipWrite.current.recipes)      saveToFb("household/recipes",      { list: recipes }); },      [recipes]);
+  useEffect(() => { if (!skipWrite.current.mealPlan)     saveToFb("household/mealPlan",     { plan: mealPlan }); },     [mealPlan]);
+  useEffect(() => { if (!skipWrite.current.nextMealPlan) saveToFb("household/nextMealPlan", { plan: nextMealPlan }); }, [nextMealPlan]);
+  useEffect(() => { if (!skipWrite.current.shoppingList) saveToFb("household/shoppingList", { list: shoppingList }); }, [shoppingList]);
+  useEffect(() => { if (!skipWrite.current.restaurants)  saveToFb("household/restaurants",  { list: restaurants }); },  [restaurants]);
 
   // Auto-purge checked items after 24h
   useEffect(() => {
@@ -1428,23 +1426,60 @@ Return ONLY the JSON, nothing else.`;
             <div className="ssub">{remaining} of {shoppingList.length} items remaining · Drag to reorder · Checked items auto-remove after 24 hours</div>
 
             {/* Add manual item */}
-            <div style={{ padding: "18px 20px", border: "1px solid rgba(180,150,60,0.12)", background: "rgba(180,150,60,0.02)", marginBottom: 20 }}>
-              <div className="flbl" style={{ marginBottom: 10 }}>Add Item Manually</div>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 80px 120px 1.5fr auto", gap: 10, alignItems: "end" }}>
-                <input className="ginput" placeholder="Item name..." value={newManualItem.name}
+            <div style={{ padding: "16px", border: "1px solid rgba(180,150,60,0.18)", background: "rgba(180,150,60,0.04)", marginBottom: 20 }}>
+              <div className="flbl" style={{ marginBottom: 10 }}>Add Item</div>
+
+              {/* Row 1: name + add button */}
+              <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+                <input
+                  className="ginput"
+                  placeholder="Item name..."
+                  value={newManualItem.name}
                   onChange={e => setNewManualItem(p => ({ ...p, name: e.target.value }))}
-                  onKeyDown={e => e.key === "Enter" && addManualItem()} />
-                <input className="ginput" placeholder="Qty" value={newManualItem.qty}
-                  onChange={e => setNewManualItem(p => ({ ...p, qty: e.target.value }))} />
-                <select className="gsel" value={newManualItem.unit}
-                  onChange={e => setNewManualItem(p => ({ ...p, unit: e.target.value }))}>
-                  {UNITS.map(u => <option key={u}>{u}</option>)}
-                </select>
-                <select className="gsel" value={newManualItem.category}
-                  onChange={e => setNewManualItem(p => ({ ...p, category: e.target.value }))}>
-                  {STORE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
-                </select>
-                <button className="btn-gold" onClick={addManualItem}>+ Add</button>
+                  onKeyDown={e => e.key === "Enter" && addManualItem()}
+                  style={{ flex: 1, fontSize: 16, padding: "10px 6px", minHeight: 44 }}
+                />
+                <button
+                  className="btn-gold"
+                  onClick={addManualItem}
+                  style={{ minWidth: 64, minHeight: 44, fontSize: 18, padding: "0 14px", flexShrink: 0 }}
+                >+</button>
+              </div>
+
+              {/* Row 2: qty · unit · category */}
+              <div style={{ display: "grid", gridTemplateColumns: "72px 1fr 1.6fr", gap: 8 }}>
+                <div>
+                  <div className="flbl" style={{ fontSize: 7, marginBottom: 4 }}>Qty</div>
+                  <input
+                    className="ginput"
+                    placeholder="1"
+                    value={newManualItem.qty}
+                    onChange={e => setNewManualItem(p => ({ ...p, qty: e.target.value }))}
+                    style={{ fontSize: 15, padding: "8px 4px", minHeight: 40, textAlign: "center" }}
+                  />
+                </div>
+                <div>
+                  <div className="flbl" style={{ fontSize: 7, marginBottom: 4 }}>Unit</div>
+                  <select
+                    className="gsel"
+                    value={newManualItem.unit}
+                    onChange={e => setNewManualItem(p => ({ ...p, unit: e.target.value }))}
+                    style={{ minHeight: 40, fontSize: 14, padding: "8px 6px" }}
+                  >
+                    {UNITS.map(u => <option key={u}>{u}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div className="flbl" style={{ fontSize: 7, marginBottom: 4 }}>Aisle</div>
+                  <select
+                    className="gsel"
+                    value={newManualItem.category}
+                    onChange={e => setNewManualItem(p => ({ ...p, category: e.target.value }))}
+                    style={{ minHeight: 40, fontSize: 14, padding: "8px 6px" }}
+                  >
+                    {STORE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
