@@ -1015,6 +1015,9 @@ Return ONLY the JSON, nothing else.`;
     if (items.length) acc[cat] = items;
     return acc;
   }, {});
+  // Catch anything with a blank or unrecognized category
+  const uncategorized = shoppingList.filter(i => !i.category || !STORE_CATEGORIES.includes(i.category));
+  if (uncategorized.length) grouped["Other"] = [...(grouped["Other"] || []), ...uncategorized];
 
   const remaining = shoppingList.filter(i => !i.checkedAt).length;
 
