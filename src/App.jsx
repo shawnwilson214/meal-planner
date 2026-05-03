@@ -436,10 +436,22 @@ export default function App() {
   const [tab, setTab] = useState("planner");
   const [editMode, setEditMode] = useState(false);
   const [recipes, setRecipes] = useState(SAMPLE_RECIPES);
-  // Default all recipes collapsed
+  // All recipes start collapsed; new ones added later also collapse by default
   const [collapsedCards, setCollapsedCards] = useState(() =>
     SAMPLE_RECIPES.reduce((acc, r) => ({ ...acc, [r.id]: true }), {})
   );
+  // When recipes load from Firebase, collapse any that aren't already tracked
+  const prevRecipeIds = useRef(new Set(SAMPLE_RECIPES.map(r => r.id)));
+  useEffect(() => {
+    const newIds = recipes.filter(r => !prevRecipeIds.current.has(r.id)).map(r => r.id);
+    if (newIds.length) {
+      setCollapsedCards(p => {
+        const patch = newIds.reduce((acc, id) => ({ ...acc, [id]: true }), {});
+        return { ...p, ...patch };
+      });
+      newIds.forEach(id => prevRecipeIds.current.add(id));
+    }
+  }, [recipes]);
   const [printSelected, setPrintSelected] = useState({});
   const [restaurants, setRestaurants] = useState(SAMPLE_RESTAURANTS);
   const [newRestaurant, setNewRestaurant] = useState("");
@@ -455,7 +467,6 @@ export default function App() {
   const [newManualItem, setNewManualItem] = useState({ name: "", qty: "", unit: "", category: "" });
   const [staples, setStaples] = useState(STAPLES_LIST.map(s => ({ ...s, id: uid() })));
   const [showStaples, setShowStaples] = useState(false);
-  const [recipeEditMode, setRecipeEditMode] = useState(false);
   const imageInputRef = useRef();
   const [imagePreview, setImagePreview] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
@@ -1428,19 +1439,17 @@ Return ONLY the JSON, nothing else.`;
                 onClick={() => setRecipeFilter("all")}>All</button>
               <button className={`filter-btn ${recipeFilter === "menu" ? "active" : ""}`}
                 onClick={() => setRecipeFilter("menu")}>
-                This Week {menuRecipeIds.size > 0 && `(${menuRecipeIds.size})`}
+                This Week{menuRecipeIds.size > 0 ? ` (${menuRecipeIds.size})` : ""}
               </button>
               <div style={{ flex: 1 }} />
-              <button className={`filter-btn ${recipeEditMode ? "active" : ""}`}
-                onClick={() => setRecipeEditMode(p => !p)}>
-                {recipeEditMode ? "✏ Edit On" : "Edit Mode"}
+              <button className="filter-btn" onClick={() => setCollapsedCards({})}>
+                Expand All
               </button>
               <button className="filter-btn" onClick={() => {
                 const allIds = recipes.reduce((acc, r) => ({ ...acc, [r.id]: true }), {});
-                const allCollapsed = recipes.every(r => collapsedCards[r.id]);
-                setCollapsedCards(allCollapsed ? {} : allIds);
+                setCollapsedCards(allIds);
               }}>
-                {recipes.every(r => collapsedCards[r.id]) ? "Expand All" : "Collapse All"}
+                Collapse All
               </button>
             </div>
 
@@ -1552,7 +1561,7 @@ Return ONLY the JSON, nothing else.`;
                           printSelected={!!printSelected[recipe.id]}
                           onPrintToggle={() => setPrintSelected(p => ({ ...p, [recipe.id]: !p[recipe.id] }))}
                           onEdit={() => { setPendingRecipe(null); startEditRecipe(recipe); }}
-                          onDelete={recipeEditMode ? () => setRecipes(p => p.filter(r => r.id !== recipe.id)) : null}
+                          onDelete={null}
                           UNITS={UNITS}
                           STORE_CATEGORIES={STORE_CATEGORIES}
                         />
