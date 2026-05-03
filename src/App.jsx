@@ -146,7 +146,11 @@ const buildShoppingList = (mealPlan, recipes, existing = []) => {
     addIngredients(slot.entree);
     addIngredients(slot.side);
     addIngredients(slot.side2);
-    (slot.extras || []).forEach(addIngredients);
+    (slot.extras || []).forEach(ex => {
+      if (!ex) return;
+      const id = typeof ex === "string" ? ex : (ex.type === "recipe" ? ex.value : null);
+      if (id) addIngredients(id);
+    });
   });
   // Merge with existing to preserve checkedAt timestamps and manual items
   return Object.values(map).map(item => {
@@ -588,9 +592,9 @@ export default function App() {
   const updateDraftSlot = (day, meal, patch) =>
     setDraftPlan(prev => ({ ...prev, [`${day}-${meal}`]: { ...getDraftSlot(day, meal), ...patch } }));
   const addDraftExtra = (day, meal) =>
-    setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); return {...prev,[k]:{...s,extras:[...s.extras,""]}}; });
-  const updateDraftExtra = (day, meal, idx, val) =>
-    setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); const e=[...s.extras]; e[idx]=val; return {...prev,[k]:{...s,extras:e}}; });
+    setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); return {...prev,[k]:{...s,extras:[...s.extras,{type:"recipe",value:""}]}}; });
+  const updateDraftExtra = (day, meal, idx, patch) =>
+    setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); const e=[...s.extras]; e[idx]={...e[idx],...patch}; return {...prev,[k]:{...s,extras:e}}; });
   const removeDraftExtra = (day, meal, idx) =>
     setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); return {...prev,[k]:{...s,extras:s.extras.filter((_,i)=>i!==idx)}}; });
 
@@ -1010,7 +1014,11 @@ Return ONLY the JSON, nothing else.`;
     if (slot.entree) menuRecipeIds.add(parseInt(slot.entree));
     if (slot.side) menuRecipeIds.add(parseInt(slot.side));
     if (slot.side2) menuRecipeIds.add(parseInt(slot.side2));
-    (slot.extras || []).forEach(id => id && menuRecipeIds.add(parseInt(id)));
+    (slot.extras || []).forEach(ex => {
+      if (!ex) return;
+      const id = typeof ex === "string" ? ex : (ex.type === "recipe" ? ex.value : null);
+      if (id) menuRecipeIds.add(parseInt(id));
+    });
   });
 
   // Render a read-only meal slot for the menu view
@@ -1021,9 +1029,19 @@ Return ONLY the JSON, nothing else.`;
     const entreeName = recipeName(slot.entree);
     const sideName = recipeName(slot.side);
     const side2Name = recipeName(slot.side2);
-    const extraNames = (slot.extras || []).map(recipeName).filter(Boolean);
+    // Support both legacy string extras (recipe IDs) and new object extras
+    const extraItems = (slot.extras || []).map(ex => {
+      if (!ex) return null;
+      if (typeof ex === "string") {
+        const n = recipeName(ex);
+        return n ? { label: n, isText: false } : null;
+      }
+      if (ex.type === "text") return ex.value?.trim() ? { label: ex.value.trim(), isText: true } : null;
+      const n = recipeName(ex.value);
+      return n ? { label: n, isText: false } : null;
+    }).filter(Boolean);
     const isDinner = meal === "Dinner";
-    const hasContent = isDiner || entreeName || sideName || side2Name || extraNames.length;
+    const hasContent = isDiner || entreeName || sideName || side2Name || extraItems.length;
 
     return (
       <div className="menu-meal" key={meal}>
@@ -1048,9 +1066,9 @@ Return ONLY the JSON, nothing else.`;
                   <div className="menu-entry-course">Side 2</div>
                   <div className="menu-entry-name">{side2Name}</div>
                 </div>}
-                {extraNames.map((n, i) => <div key={i} className="menu-entry" style={{ marginTop: 6 }}>
-                  <div className="menu-entry-course">Extra</div>
-                  <div className="menu-entry-name">{n}</div>
+                {extraItems.map((item, i) => <div key={i} className="menu-entry" style={{ marginTop: 6 }}>
+                  <div className="menu-entry-course">{item.isText ? "Note" : "Extra"}</div>
+                  <div className="menu-entry-name">{item.label}</div>
                 </div>)}
               </>
             )}
@@ -1099,16 +1117,39 @@ Return ONLY the JSON, nothing else.`;
               {sides.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </>)}
-          {(slot.extras || []).map((ex, idx) => (
-            <div key={idx} className="extra-row">
-              <select className="msel" style={{ flex: 1 }} value={ex}
-                onChange={e => updateDraftExtra(day, meal, idx, e.target.value)}>
-                <option value="">— extra —</option>
-                {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-              </select>
-              <button className="rmv-btn" onClick={() => removeDraftExtra(day, meal, idx)}>✕</button>
-            </div>
-          ))}
+          {(slot.extras || []).map((ex, idx) => {
+            // Normalise legacy string extras to object form on first render
+            const exObj = (typeof ex === "string") ? { type: "recipe", value: ex } : ex;
+            const isText = exObj.type === "text";
+            return (
+              <div key={idx} className="extra-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 3 }}>
+                {/* Type toggle + remove */}
+                <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+                  <button
+                    style={{ fontFamily: "'Cinzel',serif", fontSize: 6, letterSpacing: 1, padding: "2px 5px", border: `1px solid ${isText ? "rgba(180,150,60,0.5)" : "rgba(180,150,60,0.2)"}`, background: isText ? "rgba(180,150,60,0.12)" : "transparent", color: isText ? "#d4a843" : "#907848", cursor: "pointer", transition: "all 0.15s", flexShrink: 0 }}
+                    onClick={() => updateDraftExtra(day, meal, idx, { type: isText ? "recipe" : "text", value: "" })}
+                    title="Toggle between recipe and free text"
+                  >{isText ? "TEXT" : "RECIPE"}</button>
+                  {isText ? (
+                    <input
+                      className="ginput"
+                      placeholder="e.g. Garlic bread, leftovers…"
+                      value={exObj.value || ""}
+                      onChange={e => updateDraftExtra(day, meal, idx, { value: e.target.value })}
+                      style={{ flex: 1, fontSize: 11, padding: "3px 4px" }}
+                    />
+                  ) : (
+                    <select className="msel" style={{ flex: 1 }} value={exObj.value}
+                      onChange={e => updateDraftExtra(day, meal, idx, { value: e.target.value })}>
+                      <option value="">— recipe —</option>
+                      {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+                    </select>
+                  )}
+                  <button className="rmv-btn" onClick={() => removeDraftExtra(day, meal, idx)}>✕</button>
+                </div>
+              </div>
+            );
+          })}
           <button className="add-extra" onClick={() => addDraftExtra(day, meal)}>+ add item</button>
         </>)}
       </div>
