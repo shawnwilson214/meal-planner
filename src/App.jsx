@@ -110,7 +110,16 @@ const SAMPLE_RECIPES = [
 let nextId = 200;
 const uid = () => ++nextId;
 
-const emptySlot = () => ({ entree: "", side: "", side2: "", extras: [], restaurant: "" });
+const emptySlot = () => ({ entree: { type: "recipe", value: "" }, side: { type: "recipe", value: "" }, side2: { type: "recipe", value: "" }, extras: [], restaurant: "" });
+// Normalise a slot field: legacy string -> object, DINE_OUT stays as-is string, object passthrough
+const resolveField = (f) => {
+  if (!f) return { type: "recipe", value: "" };
+  if (typeof f === "string") return { type: "recipe", value: f };
+  return f;
+};
+const fieldVal = (f) => resolveField(f).value;
+const fieldType = (f) => resolveField(f).type;
+const isDineOut = (f) => fieldVal(f) === DINE_OUT_ID;
 
 const buildShoppingList = (mealPlan, recipes, existing = []) => {
   const map = {};
@@ -142,10 +151,12 @@ const buildShoppingList = (mealPlan, recipes, existing = []) => {
     });
   };
   Object.values(mealPlan).forEach(slot => {
-    if (!slot || slot.entree === DINE_OUT_ID) return;
-    addIngredients(slot.entree);
-    addIngredients(slot.side);
-    addIngredients(slot.side2);
+    if (!slot) return;
+    const entreeVal = fieldVal(slot.entree);
+    if (entreeVal === DINE_OUT_ID) return;
+    if (fieldType(slot.entree) === "recipe" && entreeVal) addIngredients(entreeVal);
+    if (fieldType(slot.side) === "recipe" && fieldVal(slot.side)) addIngredients(fieldVal(slot.side));
+    if (fieldType(slot.side2) === "recipe" && fieldVal(slot.side2)) addIngredients(fieldVal(slot.side2));
     (slot.extras || []).forEach(ex => {
       if (!ex) return;
       const id = typeof ex === "string" ? ex : (ex.type === "recipe" ? ex.value : null);
@@ -1010,10 +1021,10 @@ Return ONLY the JSON, nothing else.`;
   // Collect all recipe IDs referenced in this week's meal plan
   const menuRecipeIds = new Set();
   Object.values(mealPlan).forEach(slot => {
-    if (!slot || slot.entree === DINE_OUT_ID) return;
-    if (slot.entree) menuRecipeIds.add(parseInt(slot.entree));
-    if (slot.side) menuRecipeIds.add(parseInt(slot.side));
-    if (slot.side2) menuRecipeIds.add(parseInt(slot.side2));
+    if (!slot) return;
+    if (fieldType(slot.entree) === "recipe" && fieldVal(slot.entree) && !isDineOut(slot.entree)) menuRecipeIds.add(parseInt(fieldVal(slot.entree)));
+    if (fieldType(slot.side) === "recipe" && fieldVal(slot.side)) menuRecipeIds.add(parseInt(fieldVal(slot.side)));
+    if (fieldType(slot.side2) === "recipe" && fieldVal(slot.side2)) menuRecipeIds.add(parseInt(fieldVal(slot.side2)));
     (slot.extras || []).forEach(ex => {
       if (!ex) return;
       const id = typeof ex === "string" ? ex : (ex.type === "recipe" ? ex.value : null);
@@ -1025,30 +1036,36 @@ Return ONLY the JSON, nothing else.`;
   const renderMenuSlot = (day, meal) => {
     const plan = editMode ? draftPlan : currentMealPlan;
     const slot = plan[`${day}-${meal}`] || emptySlot();
-    const isDiner = slot.entree === DINE_OUT_ID;
-    const entreeName = recipeName(slot.entree);
-    const sideName = recipeName(slot.side);
-    const side2Name = recipeName(slot.side2);
-    // Support both legacy string extras (recipe IDs) and new object extras
+    const entreeField = resolveField(slot.entree);
+    const sideField = resolveField(slot.side);
+    const side2Field = resolveField(slot.side2);
+    const dineOut = entreeField.value === DINE_OUT_ID;
+
+    const getDisplayName = (field) => {
+      if (!field.value) return null;
+      if (field.type === "text") return field.value.trim() || null;
+      return recipeName(field.value);
+    };
+
+    const entreeName = dineOut ? null : getDisplayName(entreeField);
+    const sideName = getDisplayName(sideField);
+    const side2Name = getDisplayName(side2Field);
     const extraItems = (slot.extras || []).map(ex => {
       if (!ex) return null;
-      if (typeof ex === "string") {
-        const n = recipeName(ex);
-        return n ? { label: n, isText: false } : null;
-      }
-      if (ex.type === "text") return ex.value?.trim() ? { label: ex.value.trim(), isText: true } : null;
-      const n = recipeName(ex.value);
+      const obj = typeof ex === "string" ? { type: "recipe", value: ex } : ex;
+      if (obj.type === "text") return obj.value?.trim() ? { label: obj.value.trim(), isText: true } : null;
+      const n = recipeName(obj.value);
       return n ? { label: n, isText: false } : null;
     }).filter(Boolean);
     const isDinner = meal === "Dinner";
-    const hasContent = isDiner || entreeName || sideName || side2Name || extraItems.length;
+    const hasContent = dineOut || entreeName || sideName || side2Name || extraItems.length;
 
     return (
       <div className="menu-meal" key={meal}>
         <div className="menu-meal-title">{meal}</div>
         {!hasContent ? <div className="menu-empty">—</div> : (
           <>
-            {isDiner ? (
+            {dineOut ? (
               <div className="menu-entry">
                 <div className="menu-entry-name dine">🍽 {slot.restaurant || "Dining Out"}</div>
               </div>
@@ -1079,22 +1096,63 @@ Return ONLY the JSON, nothing else.`;
   };
 
   // Render an editable meal slot
+  // Shared toggle-input renderer used for every slot field
+  const renderFieldInput = ({ label, field, allRecipes, onFieldChange, onClear, showDineOut = false, showRemove = false, onRemove }) => {
+    const obj = resolveField(field);
+    const isText = obj.type === "text";
+    const isDO = obj.value === DINE_OUT_ID;
+    return (
+      <div style={{ marginBottom: 4 }}>
+        <div className="course-lbl">{label}</div>
+        <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
+          <button
+            style={{ fontFamily: "'Cinzel',serif", fontSize: 6, letterSpacing: 1, padding: "2px 5px", flexShrink: 0,
+              border: `1px solid ${isText ? "rgba(180,150,60,0.5)" : "rgba(180,150,60,0.2)"}`,
+              background: isText ? "rgba(180,150,60,0.12)" : "transparent",
+              color: isText ? "#d4a843" : "#907848", cursor: "pointer", transition: "all 0.15s" }}
+            onClick={() => onFieldChange({ type: isText ? "recipe" : "text", value: "" })}
+            title="Switch between recipe and free text"
+          >{isText ? "TEXT" : "RECIPE"}</button>
+          {isText ? (
+            <input className="ginput" placeholder="Type anything…" value={obj.value}
+              onChange={e => onFieldChange({ ...obj, value: e.target.value })}
+              style={{ flex: 1, fontSize: 11, padding: "3px 4px" }} />
+          ) : (
+            <select className="msel" style={{ flex: 1 }} value={obj.value}
+              onChange={e => onFieldChange({ type: "recipe", value: e.target.value })}>
+              <option value="">—</option>
+              {showDineOut && <option value={DINE_OUT_ID}>🍽 Dine Out</option>}
+              {allRecipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          )}
+          {showRemove && <button className="rmv-btn" onClick={onRemove}>✕</button>}
+        </div>
+      </div>
+    );
+  };
+
   const renderEditSlot = (day, meal) => {
     const slot = getDraftSlot(day, meal);
     const isDinner = meal === "Dinner";
-    const dineOut = slot.entree === DINE_OUT_ID;
+    const entreeObj = resolveField(slot.entree);
+    const dineOut = entreeObj.value === DINE_OUT_ID;
     const entrees = recipes.filter(r => r.recipeType === "Entrée" || !r.recipeType);
     const sides = recipes.filter(r => r.recipeType === "Side");
     return (
       <div className="edit-slot" key={meal}>
         <div className="edit-slot-lbl">{meal}</div>
-        <div className="course-lbl">Entrée</div>
-        <select className="msel" value={slot.entree}
-          onChange={e => updateDraftSlot(day, meal, { entree: e.target.value, side: "", side2: "", extras: [], restaurant: "" })}>
-          <option value="">—</option>
-          <option value={DINE_OUT_ID}>🍽 Dine Out</option>
-          {entrees.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-        </select>
+
+        {renderFieldInput({
+          label: "Entrée",
+          field: slot.entree,
+          allRecipes: entrees,
+          showDineOut: true,
+          onFieldChange: (newField) => {
+            // If switching away from or to Dine Out, reset sides/extras
+            updateDraftSlot(day, meal, { entree: newField, side: { type: "recipe", value: "" }, side2: { type: "recipe", value: "" }, extras: [], restaurant: "" });
+          },
+        })}
+
         {dineOut && (
           <select className="msel rest-sel" style={{ marginTop: 3 }} value={slot.restaurant}
             onChange={e => updateDraftSlot(day, meal, { restaurant: e.target.value })}>
@@ -1102,54 +1160,39 @@ Return ONLY the JSON, nothing else.`;
             {restaurants.map(r => <option key={r} value={r}>{r}</option>)}
           </select>
         )}
+
         {!dineOut && (<>
           {isDinner && (<>
-            <div className="course-lbl">Side 1</div>
-            <select className="msel" value={slot.side}
-              onChange={e => updateDraftSlot(day, meal, { side: e.target.value })}>
-              <option value="">—</option>
-              {sides.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
-            <div className="course-lbl">Side 2</div>
-            <select className="msel" value={slot.side2}
-              onChange={e => updateDraftSlot(day, meal, { side2: e.target.value })}>
-              <option value="">—</option>
-              {sides.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-            </select>
+            {renderFieldInput({
+              label: "Side 1",
+              field: slot.side,
+              allRecipes: sides,
+              onFieldChange: (newField) => updateDraftSlot(day, meal, { side: newField }),
+            })}
+            {renderFieldInput({
+              label: "Side 2",
+              field: slot.side2,
+              allRecipes: sides,
+              onFieldChange: (newField) => updateDraftSlot(day, meal, { side2: newField }),
+            })}
           </>)}
+
           {(slot.extras || []).map((ex, idx) => {
-            // Normalise legacy string extras to object form on first render
-            const exObj = (typeof ex === "string") ? { type: "recipe", value: ex } : ex;
-            const isText = exObj.type === "text";
+            const exObj = typeof ex === "string" ? { type: "recipe", value: ex } : ex;
             return (
-              <div key={idx} className="extra-row" style={{ flexDirection: "column", alignItems: "stretch", gap: 3 }}>
-                {/* Type toggle + remove */}
-                <div style={{ display: "flex", gap: 2, alignItems: "center" }}>
-                  <button
-                    style={{ fontFamily: "'Cinzel',serif", fontSize: 6, letterSpacing: 1, padding: "2px 5px", border: `1px solid ${isText ? "rgba(180,150,60,0.5)" : "rgba(180,150,60,0.2)"}`, background: isText ? "rgba(180,150,60,0.12)" : "transparent", color: isText ? "#d4a843" : "#907848", cursor: "pointer", transition: "all 0.15s", flexShrink: 0 }}
-                    onClick={() => updateDraftExtra(day, meal, idx, { type: isText ? "recipe" : "text", value: "" })}
-                    title="Toggle between recipe and free text"
-                  >{isText ? "TEXT" : "RECIPE"}</button>
-                  {isText ? (
-                    <input
-                      className="ginput"
-                      placeholder="e.g. Garlic bread, leftovers…"
-                      value={exObj.value || ""}
-                      onChange={e => updateDraftExtra(day, meal, idx, { value: e.target.value })}
-                      style={{ flex: 1, fontSize: 11, padding: "3px 4px" }}
-                    />
-                  ) : (
-                    <select className="msel" style={{ flex: 1 }} value={exObj.value}
-                      onChange={e => updateDraftExtra(day, meal, idx, { value: e.target.value })}>
-                      <option value="">— recipe —</option>
-                      {recipes.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-                    </select>
-                  )}
-                  <button className="rmv-btn" onClick={() => removeDraftExtra(day, meal, idx)}>✕</button>
-                </div>
+              <div key={idx}>
+                {renderFieldInput({
+                  label: `Extra ${idx + 1}`,
+                  field: exObj,
+                  allRecipes: recipes,
+                  showRemove: true,
+                  onRemove: () => removeDraftExtra(day, meal, idx),
+                  onFieldChange: (newField) => updateDraftExtra(day, meal, idx, newField),
+                })}
               </div>
             );
           })}
+
           <button className="add-extra" onClick={() => addDraftExtra(day, meal)}>+ add item</button>
         </>)}
       </div>
