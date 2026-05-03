@@ -119,16 +119,22 @@ const buildShoppingList = (mealPlan, recipes, existing = []) => {
     const recipe = recipes.find(r => r.id === parseInt(recipeId));
     if (!recipe) return;
     recipe.ingredients.forEach(ing => {
+      if (!ing.name || !ing.name.trim()) return; // skip nameless entries
       const k = ing.name.toLowerCase();
       if (map[k]) {
-        // Try to sum numeric quantities
+        // Try to sum numeric quantities; gracefully handle blank/missing
         const existingQty = parseFloat(map[k].qty);
         const newQty = parseFloat(ing.qty);
         if (!isNaN(existingQty) && !isNaN(newQty)) {
           map[k].qty = String(existingQty + newQty);
-        } else {
+        } else if (map[k].qty && ing.qty) {
           map[k].qty = `${map[k].qty} + ${ing.qty}`;
+        } else if (!map[k].qty && ing.qty) {
+          map[k].qty = ing.qty;
         }
+        // fill in unit/category from the new entry if the existing one is blank
+        if (!map[k].unit && ing.unit) map[k].unit = ing.unit;
+        if (!map[k].category && ing.category) map[k].category = ing.category;
         map[k].count += 1;
       } else {
         map[k] = { ...ing, id: uid(), count: 1, checkedAt: null };
@@ -395,6 +401,37 @@ function RecipeCard({ recipe, isOpen, onToggle, printSelected, onPrintToggle, on
   );
 }
 
+// Self-contained row for adding a new staple item inside the modal
+function StaplesAddRow({ onAdd, UNITS }) {
+  const [name, setName] = useState("");
+  const [qty, setQty] = useState("");
+  const [unit, setUnit] = useState("");
+  const handleAdd = () => {
+    if (!name.trim()) return;
+    onAdd({ name: name.trim(), qty, unit, category: "" });
+    setName(""); setQty(""); setUnit("");
+  };
+  return (
+    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+      <input className="ginput" value={name} placeholder="Item name"
+        onChange={e => setName(e.target.value)}
+        onKeyDown={e => e.key === "Enter" && handleAdd()}
+        style={{ flex: 1, fontSize: 14 }} />
+      <input className="ginput" value={qty} placeholder="Qty"
+        onChange={e => setQty(e.target.value)}
+        style={{ width: 46, textAlign: "center", fontSize: 14 }} />
+      <select className="gsel" value={unit}
+        onChange={e => setUnit(e.target.value)}
+        style={{ width: 68, fontSize: 12, padding: "6px 4px" }}>
+        <option value="">—</option>
+        {UNITS.filter(u => u !== "—").map(u => <option key={u}>{u}</option>)}
+      </select>
+      <button className="btn-gold" onClick={handleAdd}
+        style={{ padding: "6px 14px", fontSize: 16, flexShrink: 0 }}>+</button>
+    </div>
+  );
+}
+
 export default function App() {
   const [tab, setTab] = useState("planner");
   const [editMode, setEditMode] = useState(false);
@@ -426,7 +463,7 @@ export default function App() {
   const [urlInput, setUrlInput] = useState("");
   const [urlLoading, setUrlLoading] = useState(false);
   const [urlError, setUrlError] = useState("");
-  const [newRecipe, setNewRecipe] = useState({ name: "", recipeType: "Entrée", notes: "", prepSteps: [""], cookSteps: [""], ingredients: [{ name: "", qty: "", unit: "—", category: "Produce" }] });
+  const [newRecipe, setNewRecipe] = useState({ name: "", recipeType: "Entrée", notes: "", prepSteps: [""], cookSteps: [""], ingredients: [{ name: "", qty: "", unit: "", category: "" }] });
   const [showAddRecipe, setShowAddRecipe] = useState(false);
   const [pendingRecipe, setPendingRecipe] = useState(null);
   const [editingRecipe, setEditingRecipe] = useState(null);
@@ -909,7 +946,7 @@ Return ONLY the JSON, nothing else.`;
     ];
     // Route through pending review panel instead of saving directly
     setPendingRecipe({ ...newRecipe, steps, id: uid() });
-    setNewRecipe({ name: "", recipeType: "Entrée", notes: "", prepSteps: [""], cookSteps: [""], ingredients: [{ name: "", qty: "", unit: "—", category: "Produce" }] });
+    setNewRecipe({ name: "", recipeType: "Entrée", notes: "", prepSteps: [""], cookSteps: [""], ingredients: [{ name: "", qty: "", unit: "", category: "" }] });
     setShowAddRecipe(false);
   };
   const updateNewIngredient = (idx, field, value) =>
@@ -920,7 +957,7 @@ Return ONLY the JSON, nothing else.`;
   const updatePendingIngredient = (idx, field, value) =>
     setPendingRecipe(prev => { const ings = [...prev.ingredients]; ings[idx] = { ...ings[idx], [field]: value }; return { ...prev, ingredients: ings }; });
   const addPendingIngredient = () =>
-    setPendingRecipe(prev => ({ ...prev, ingredients: [...prev.ingredients, { name: "", qty: "", category: "Produce" }] }));
+    setPendingRecipe(prev => ({ ...prev, ingredients: [...prev.ingredients, { name: "", qty: "", unit: "", category: "" }] }));
   const removePendingIngredient = (idx) =>
     setPendingRecipe(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== idx) }));
   const savePendingRecipe = () => {
@@ -936,7 +973,7 @@ Return ONLY the JSON, nothing else.`;
   const updateEditingIngredient = (idx, field, value) =>
     setEditingRecipe(prev => { const ings = [...prev.ingredients]; ings[idx] = { ...ings[idx], [field]: value }; return { ...prev, ingredients: ings }; });
   const addEditingIngredient = () =>
-    setEditingRecipe(prev => ({ ...prev, ingredients: [...prev.ingredients, { name: "", qty: "", category: "Produce" }] }));
+    setEditingRecipe(prev => ({ ...prev, ingredients: [...prev.ingredients, { name: "", qty: "", unit: "", category: "" }] }));
   const removeEditingIngredient = (idx) =>
     setEditingRecipe(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== idx) }));
   const saveEditingRecipe = () => {
@@ -1250,7 +1287,7 @@ Return ONLY the JSON, nothing else.`;
                         <button className="btn-danger" style={{ padding: "6px 10px" }} onClick={() => setNewRecipe(p => ({ ...p, ingredients: p.ingredients.filter((_, i) => i !== idx) }))}>✕</button>
                       </div>
                     ))}
-                    <button className="btn-ghost" style={{ marginBottom: 20 }} onClick={() => setNewRecipe(p => ({ ...p, ingredients: [...p.ingredients, { name: "", qty: "", unit: "—", category: "Produce" }] }))}>+ Ingredient</button>
+                    <button className="btn-ghost" style={{ marginBottom: 20 }} onClick={() => setNewRecipe(p => ({ ...p, ingredients: [...p.ingredients, { name: "", qty: "", unit: "", category: "" }] }))}>+ Ingredient</button>
 
                     <div className="flbl" style={{ marginBottom: 8, marginTop: 4 }}>
                       Preparation Steps
@@ -1648,23 +1685,40 @@ Return ONLY the JSON, nothing else.`;
         <div className="modal-overlay" onClick={() => setShowStaples(false)}>
           <div className="modal-box" onClick={e => e.stopPropagation()}>
             <div style={{ fontFamily: "'Cinzel',serif", fontSize: 10, letterSpacing: 3, color: "#d4a843", textTransform: "uppercase", marginBottom: 4 }}>⭐ Weekly Staples</div>
-            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 13, color: "#907848", marginBottom: 20 }}>These items repopulate your shopping list every Monday. Edit quantities or remove items as needed.</div>
+            <div style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 13, color: "#907848", marginBottom: 20 }}>These items repopulate your list every Monday. Edit names, quantities, or remove items below.</div>
+
+            {/* Existing staples — all fields editable */}
             {staples.map((staple, idx) => (
               <div key={staple.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontSize: 15, color: "#e8dfc8", flex: 1 }}>{staple.name}</span>
+                <input className="ginput" value={staple.name} placeholder="Item name"
+                  onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                  style={{ flex: 1, fontSize: 14 }} />
                 <input className="ginput" value={staple.qty} placeholder="Qty"
                   onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, qty: e.target.value } : s))}
-                  style={{ width: 48, textAlign: "center", fontSize: 14 }} />
-                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 12, color: "#907848", minWidth: 32 }}>{staple.unit}</span>
-                <button className="btn-danger" style={{ padding: "4px 8px", fontSize: 12 }}
+                  style={{ width: 46, textAlign: "center", fontSize: 14 }} />
+                <select className="gsel" value={staple.unit || ""}
+                  onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, unit: e.target.value } : s))}
+                  style={{ width: 68, fontSize: 12, padding: "6px 4px" }}>
+                  <option value="">—</option>
+                  {UNITS.filter(u => u !== "—").map(u => <option key={u}>{u}</option>)}
+                </select>
+                <button className="btn-danger" style={{ padding: "5px 9px", fontSize: 13, flexShrink: 0 }}
                   onClick={() => setStaples(p => p.filter((_, i) => i !== idx))}>✕</button>
               </div>
             ))}
-            <div style={{ display: "flex", gap: 8, marginTop: 16, flexWrap: "wrap" }}>
+
+            {/* Add new staple */}
+            <div style={{ borderTop: "1px solid rgba(180,150,60,0.15)", marginTop: 14, paddingTop: 14 }}>
+              <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#907848", textTransform: "uppercase", marginBottom: 8 }}>Add Item</div>
+              <StaplesAddRow onAdd={(item) => setStaples(p => [...p, { ...item, id: uid() }])} UNITS={UNITS} />
+            </div>
+
+            <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
               <button className="btn-ghost" onClick={() => {
                 setShoppingList(prev => {
                   const updated = [...prev];
                   staples.forEach(staple => {
+                    if (!staple.name.trim()) return;
                     const alreadyThere = updated.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
                     if (!alreadyThere) updated.push({ ...staple, id: uid(), checkedAt: null });
                   });
