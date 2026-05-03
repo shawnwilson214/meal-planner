@@ -467,6 +467,7 @@ export default function App() {
   const [showAddRecipe, setShowAddRecipe] = useState(false);
   const [pendingRecipe, setPendingRecipe] = useState(null);
   const [editingRecipe, setEditingRecipe] = useState(null);
+  const [confirmDeleteRecipeId, setConfirmDeleteRecipeId] = useState(null);
   const [fbReady, setFbReady] = useState(false);
 
   // ── Firebase sync ─────────────────────────────────────────────────────────
@@ -980,6 +981,7 @@ Return ONLY the JSON, nothing else.`;
     if (!editingRecipe?.name?.trim()) return;
     setRecipes(prev => prev.map(r => r.id === editingRecipe.id ? editingRecipe : r));
     setEditingRecipe(null);
+    setConfirmDeleteRecipeId(null);
   };
 
   const grouped = STORE_CATEGORIES.reduce((acc, cat) => {
@@ -1519,9 +1521,25 @@ Return ONLY the JSON, nothing else.`;
                             <textarea className="notes-area" placeholder="Tips, variations, cooking times, serving suggestions..." value={editingRecipe.notes || ""}
                               onChange={e => updateEditingField("notes", e.target.value)} />
                           </div>
-                          <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+                          <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
                             <button className="btn-save" onClick={saveEditingRecipe}>Save Changes</button>
-                            <button className="btn-danger" onClick={() => setEditingRecipe(null)}>Cancel</button>
+                            <button className="btn-danger" onClick={() => { setEditingRecipe(null); setConfirmDeleteRecipeId(null); }}>Cancel</button>
+                            <div style={{ flex: 1 }} />
+                            {confirmDeleteRecipeId === editingRecipe.id ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", border: "1px solid rgba(180,60,60,0.45)", background: "rgba(180,60,60,0.07)" }}>
+                                <span style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 13, color: "#e08080" }}>Delete this recipe?</span>
+                                <button className="btn-danger" style={{ padding: "5px 14px" }} onClick={() => {
+                                  setRecipes(p => p.filter(r => r.id !== editingRecipe.id));
+                                  setEditingRecipe(null);
+                                  setConfirmDeleteRecipeId(null);
+                                }}>Yes, delete</button>
+                                <button className="btn-ghost" style={{ padding: "5px 12px" }} onClick={() => setConfirmDeleteRecipeId(null)}>No, keep it</button>
+                              </div>
+                            ) : (
+                              <button className="btn-danger" style={{ opacity: 0.7 }} onClick={() => setConfirmDeleteRecipeId(editingRecipe.id)}>
+                                🗑 Delete Recipe
+                              </button>
+                            )}
                           </div>
                         </div>
                       );
