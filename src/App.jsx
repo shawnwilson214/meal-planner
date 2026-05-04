@@ -211,15 +211,16 @@ const css = `
   .menu-view{border:1px solid rgba(180,150,60,0.2);background:linear-gradient(160deg,#1a1510,#121009);}
   .menu-day{border-bottom:1px solid rgba(180,150,60,0.12);}
   .menu-day:last-child{border-bottom:none;}
-  .menu-day-header{display:flex;align-items:center;gap:0;padding:0;}
-  .menu-day-name{font-family:'Cinzel',serif;font-size:11px;letter-spacing:3px;color:#d4a843;text-transform:uppercase;width:120px;flex-shrink:0;padding:18px 20px;border-right:1px solid rgba(180,150,60,0.12);}
-  .menu-meals{display:flex;flex:1;flex-wrap:wrap;}
-  .menu-meal{flex:1;min-width:200px;padding:16px 20px;border-right:1px solid rgba(180,150,60,0.08);}
+  .menu-day-header{display:flex;align-items:stretch;gap:0;padding:0;}
+  .menu-day-name{font-family:'Cinzel',serif;font-size:11px;letter-spacing:3px;color:#d4a843;text-transform:uppercase;width:120px;flex-shrink:0;padding:18px 20px;border-right:1px solid rgba(180,150,60,0.12);display:flex;align-items:center;}
+  .menu-meals{display:flex;flex:1;flex-wrap:wrap;align-items:stretch;}
+  .menu-meal{flex:1;min-width:200px;padding:16px 20px;border-right:1px solid rgba(180,150,60,0.08);display:flex;flex-direction:column;}
   .menu-meal:last-child{border-right:none;}
   .menu-meal-title{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b09060;text-transform:uppercase;margin-bottom:10px;}
-  .menu-entry{margin-bottom:4px;}
-  .menu-entry-course{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1.5px;color:#907848;text-transform:uppercase;margin-bottom:1px;}
-  .menu-entry-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:#e0d0a8;line-height:1.2;}
+  .menu-meal-content{flex:1;display:flex;flex-direction:column;justify-content:flex-start;}
+  .menu-entry{margin-bottom:6px;}
+  .menu-entry-course{font-family:'Cinzel',serif;font-size:7px;letter-spacing:1.5px;color:#907848;text-transform:uppercase;margin-bottom:2px;}
+  .menu-entry-name{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:15px;color:#e0d0a8;line-height:1.3;}
   .menu-entry-name.dine{color:#d4a843;}
   .menu-empty{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:13px;color:#5a5038;}
 
@@ -267,6 +268,8 @@ const css = `
   .gsel option{background:#1e1a12;color:#e8dfc8;}
   .fgrid{display:grid;grid-template-columns:2fr 1fr 1.5fr auto;gap:10px;align-items:end;}
   .flbl{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;color:#b09060;text-transform:uppercase;margin-bottom:5px;}
+  .ing-grid{display:grid;grid-template-columns:2fr 70px 110px 1.4fr auto;gap:8px;margin-bottom:8px;align-items:end;}
+  @media(max-width:600px){.ing-grid{grid-template-columns:1fr 1fr;}.ing-grid>*:nth-child(1){grid-column:1/-1;}.ing-grid>*:last-child{grid-column:1/-1;display:flex;justify-content:flex-end;}}
 
   /* RECIPE CARDS */
   .rgrid{display:grid;grid-template-columns:1fr;gap:16px;}
@@ -314,11 +317,12 @@ const css = `
   .stitle{font-family:'Cinzel',serif;font-size:9px;letter-spacing:4px;color:#d4a843;text-transform:uppercase;text-align:center;margin-bottom:5px;}
   .shead{font-family:'Cormorant Garamond',serif;font-style:italic;font-size:32px;font-weight:300;text-align:center;color:#f0e4c0;margin-bottom:3px;}
   .ssub{text-align:center;font-size:11px;color:#907848;letter-spacing:1px;margin-bottom:32px;font-style:italic;}
-  .menu-week-toggle{display:flex;justify-content:center;gap:0;margin-bottom:24px;}
-  .week-tab{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2.5px;text-transform:uppercase;padding:9px 28px;border:1px solid rgba(180,150,60,0.25);background:transparent;color:#a09060;cursor:pointer;transition:all 0.2s;}
-  .week-tab:first-child{border-right:none;}
+  .menu-week-toggle{display:flex;justify-content:center;gap:0;margin-bottom:24px;flex-wrap:wrap;}
+  .week-tab{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2.5px;text-transform:uppercase;padding:9px 20px;border:1px solid rgba(180,150,60,0.25);background:transparent;color:#a09060;cursor:pointer;transition:all 0.2s;margin-bottom:1px;}
+  .week-tab:not(:last-child){border-right:none;}
   .week-tab.active{background:rgba(180,150,60,0.12);color:#f5d060;border-color:rgba(180,150,60,0.5);}
   .week-tab:hover:not(.active){color:#e0b848;border-color:rgba(180,150,60,0.4);}
+  .week-tab.past{color:#7a6840;font-size:7px;letter-spacing:1.5px;}
   .recipe-filter-bar{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:10px 16px;border:1px solid rgba(180,150,60,0.18);background:rgba(180,150,60,0.04);flex-wrap:wrap;}
   .filter-btn{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;text-transform:uppercase;padding:6px 16px;border:1px solid rgba(180,150,60,0.25);background:transparent;color:#a09060;cursor:pointer;transition:all 0.2s;}
   .filter-btn.active{background:rgba(180,150,60,0.14);color:#f5d060;border-color:rgba(180,150,60,0.55);}
@@ -473,6 +477,7 @@ export default function App() {
   const [activeWeek, setActiveWeek] = useState("this");
   const [mealPlan, setMealPlan] = useState({});
   const [nextMealPlan, setNextMealPlan] = useState({});
+  const [pastMealPlans, setPastMealPlans] = useState([]); // [{weekLabel, weekStart, plan}]
   const [draftPlan, setDraftPlan] = useState({});
   const [recipeFilter, setRecipeFilter] = useState("all");
   const [shoppingList, setShoppingList] = useState([]);
@@ -503,8 +508,8 @@ export default function App() {
   // This prevents the default state from overwriting saved Firestore data.
 
   const fbLoaded = useRef({});
-  const COLLECTIONS = ["recipes", "mealPlan", "nextMealPlan", "shoppingList", "restaurants", "staples"];
-  const skipWrite = useRef({ recipes: true, mealPlan: true, nextMealPlan: true, shoppingList: true, restaurants: true, staples: true });
+  const COLLECTIONS = ["recipes", "mealPlan", "nextMealPlan", "shoppingList", "restaurants", "staples", "pastMealPlans"];
+  const skipWrite = useRef({ recipes: true, mealPlan: true, nextMealPlan: true, shoppingList: true, restaurants: true, staples: true, pastMealPlans: true });
 
   useEffect(() => {
     const unsubs = [];
@@ -536,12 +541,25 @@ export default function App() {
       unsubs.push(unsub);
     };
 
-    listen("recipes",       "household/recipes",       (d) => { if (Array.isArray(d.list)) setRecipes(d.list); });
+    listen("recipes",       "household/recipes",       (d) => {
+      if (Array.isArray(d.list)) {
+        // Deduplicate by name (case-insensitive), keeping the first occurrence
+        const seen = new Set();
+        const deduped = d.list.filter(r => {
+          const key = (r.name || "").toLowerCase().trim();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        setRecipes(deduped);
+      }
+    });
     listen("mealPlan",      "household/mealPlan",      (d) => { if (d.plan)                setMealPlan(d.plan); });
     listen("nextMealPlan",  "household/nextMealPlan",  (d) => { if (d.plan)                setNextMealPlan(d.plan); });
     listen("shoppingList",  "household/shoppingList",  (d) => { if (Array.isArray(d.list)) setShoppingList(d.list); });
     listen("restaurants",   "household/restaurants",   (d) => { if (Array.isArray(d.list)) setRestaurants(d.list); });
     listen("staples",       "household/staples",       (d) => { if (Array.isArray(d.list)) setStaples(d.list); });
+    listen("pastMealPlans", "household/pastMealPlans", (d) => { if (Array.isArray(d.list)) setPastMealPlans(d.list); });
 
     // Safety fallback — if Firestore never responds (offline/blocked), unblock UI after 5s
     const fallback = setTimeout(() => {
@@ -564,6 +582,7 @@ export default function App() {
   useEffect(() => { if (!skipWrite.current.shoppingList) saveToFb("household/shoppingList", { list: shoppingList }); }, [shoppingList]);
   useEffect(() => { if (!skipWrite.current.restaurants)  saveToFb("household/restaurants",  { list: restaurants }); },  [restaurants]);
   useEffect(() => { if (!skipWrite.current.staples)      saveToFb("household/staples",      { list: staples }); },      [staples]);
+  useEffect(() => { if (!skipWrite.current.pastMealPlans) saveToFb("household/pastMealPlans", { list: pastMealPlans }); }, [pastMealPlans]);
 
   // Auto-purge checked items after 24h
   useEffect(() => {
@@ -574,27 +593,49 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // Auto-add staples on Monday
+  // Monday rotation: archive this week, move next week -> this week, clear next week, add shopping + staples
   useEffect(() => {
-    const lastStaplesKey = "lastStaplesAdded";
-    const checkAndAddStaples = () => {
-      const today = new Date();
-      if (today.getDay() !== 1) return; // 1 = Monday
-      const todayStr = today.toDateString();
-      const last = localStorage.getItem(lastStaplesKey);
-      if (last === todayStr) return;
-      setShoppingList(prev => {
-        const existing = [...prev];
-        staples.forEach(staple => {
-          const alreadyThere = existing.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
-          if (!alreadyThere) existing.push({ ...staple, id: uid(), checkedAt: null });
-        });
-        return existing;
+    if (!fbReady) return;
+    const MONDAY_KEY = "lastMondayRotation";
+    const today = new Date();
+    if (today.getDay() !== 1) return; // 1 = Monday
+    const todayStr = today.toDateString();
+    const last = localStorage.getItem(MONDAY_KEY);
+    if (last === todayStr) return; // already ran today
+
+    // 1. Archive the outgoing week (keep last 4 weeks)
+    if (Object.keys(mealPlan).length > 0) {
+      // Label is the Monday date of the week that's ending (7 days ago)
+      const prevMonday = new Date(today);
+      prevMonday.setDate(today.getDate() - 7);
+      const weekLabel = prevMonday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const weekStart = prevMonday.toISOString().split("T")[0];
+      setPastMealPlans(prev => {
+        const entry = { weekLabel, weekStart, plan: mealPlan };
+        const updated = [entry, ...prev.filter(p => p.weekStart !== weekStart)];
+        return updated.slice(0, 4); // keep only 4 weeks of history
       });
-      localStorage.setItem(lastStaplesKey, todayStr);
-    };
-    checkAndAddStaples();
-  }, [staples]);
+    }
+
+    // 2. Promote next week's plan to this week
+    setMealPlan(nextMealPlan);
+    // 3. Clear next week's plan
+    setNextMealPlan({});
+    // 4. Build shopping list from newly promoted plan, then append staples
+    setShoppingList(prev => {
+      const withRecipes = buildShoppingList(nextMealPlan, recipes, prev);
+      const result = [...withRecipes];
+      staples.forEach(staple => {
+        if (!staple.name.trim()) return;
+        const alreadyThere = result.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
+        if (!alreadyThere) result.push({ ...staple, id: uid(), checkedAt: null });
+      });
+      return result;
+    });
+
+    localStorage.setItem(MONDAY_KEY, todayStr);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fbReady]);
 
   const getMealsForDay = (day) => WEEKEND_DAYS.includes(day) ? WEEKEND_MEALS : WEEKDAY_MEALS;
 
@@ -609,7 +650,10 @@ export default function App() {
   const removeDraftExtra = (day, meal, idx) =>
     setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); return {...prev,[k]:{...s,extras:s.extras.filter((_,i)=>i!==idx)}}; });
 
-  const currentMealPlan = activeWeek === "this" ? mealPlan : nextMealPlan;
+  const isPastWeek = activeWeek.startsWith("past-");
+  const currentMealPlan = isPastWeek
+    ? (pastMealPlans.find(p => p.weekStart === activeWeek.replace("past-", ""))?.plan || {})
+    : activeWeek === "this" ? mealPlan : nextMealPlan;
   const setCurrentMealPlan = activeWeek === "this" ? setMealPlan : setNextMealPlan;
 
   const enterEdit = () => { setDraftPlan(JSON.parse(JSON.stringify(currentMealPlan))); setEditMode(true); };
@@ -1066,6 +1110,7 @@ Return ONLY the JSON, nothing else.`;
     return (
       <div className="menu-meal" key={meal}>
         <div className="menu-meal-title">{meal}</div>
+        <div className="menu-meal-content">
         {!hasContent ? <div className="menu-empty">—</div> : (
           <>
             {dineOut ? (
@@ -1078,15 +1123,15 @@ Return ONLY the JSON, nothing else.`;
                   <div className="menu-entry-course">Entrée</div>
                   <div className="menu-entry-name">{entreeName}</div>
                 </div>}
-                {isDinner && sideName && <div className="menu-entry" style={{ marginTop: 6 }}>
+                {isDinner && sideName && <div className="menu-entry">
                   <div className="menu-entry-course">Side 1</div>
                   <div className="menu-entry-name">{sideName}</div>
                 </div>}
-                {isDinner && side2Name && <div className="menu-entry" style={{ marginTop: 6 }}>
+                {isDinner && side2Name && <div className="menu-entry">
                   <div className="menu-entry-course">Side 2</div>
                   <div className="menu-entry-name">{side2Name}</div>
                 </div>}
-                {extraItems.map((item, i) => <div key={i} className="menu-entry" style={{ marginTop: 6 }}>
+                {extraItems.map((item, i) => <div key={i} className="menu-entry">
                   <div className="menu-entry-course">{item.isText ? "Note" : "Extra"}</div>
                   <div className="menu-entry-name">{item.label}</div>
                 </div>)}
@@ -1094,6 +1139,7 @@ Return ONLY the JSON, nothing else.`;
             )}
           </>
         )}
+        </div>
       </div>
     );
   };
@@ -1246,20 +1292,34 @@ Return ONLY the JSON, nothing else.`;
           <div>
             {/* Week toggle */}
             {!editMode && (
-              <div className="menu-week-toggle">
+              <div className="menu-week-toggle" style={{ flexWrap: "wrap" }}>
                 <button className={`week-tab ${activeWeek === "this" ? "active" : ""}`}
                   onClick={() => setActiveWeek("this")}>This Week</button>
                 <button className={`week-tab ${activeWeek === "next" ? "active" : ""}`}
                   onClick={() => setActiveWeek("next")}>Next Week</button>
+                {pastMealPlans.map(p => (
+                  <button key={p.weekStart}
+                    className={`week-tab past ${activeWeek === `past-${p.weekStart}` ? "active" : ""}`}
+                    onClick={() => setActiveWeek(`past-${p.weekStart}`)}>
+                    Week of {p.weekLabel}
+                  </button>
+                ))}
               </div>
             )}
 
             {/* Edit / Save bar */}
             <div className={`edit-bar ${editMode ? "edit-mode-strip" : ""}`}>
               <div>
-                <div className="edit-bar-title">{editMode ? "✏ Edit Mode" : `◆ ${activeWeek === "this" ? "This Week's" : "Next Week's"} Menu`}</div>
+                <div className="edit-bar-title">
+                  {editMode ? "✏ Edit Mode"
+                    : isPastWeek
+                      ? `◆ Week of ${pastMealPlans.find(p => p.weekStart === activeWeek.replace("past-",""))?.weekLabel || ""}`
+                      : `◆ ${activeWeek === "this" ? "This Week's" : "Next Week's"} Menu`}
+                </div>
                 <div className="edit-bar-note">
-                  {editMode ? "Make your selections, then save to update provisions." : "Click Edit Menu to plan your week."}
+                  {editMode ? "Make your selections, then save to update provisions."
+                    : isPastWeek ? "Past menus are read-only."
+                    : "Click Edit Menu to plan your week."}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
@@ -1268,7 +1328,7 @@ Return ONLY the JSON, nothing else.`;
                     <button className="btn-ghost" onClick={cancelEdit}>Cancel</button>
                     <button className="btn-save" onClick={saveEdit}>Save &amp; Update List</button>
                   </>
-                ) : (
+                ) : !isPastWeek && (
                   <button className="btn-gold" onClick={enterEdit}>Edit Menu</button>
                 )}
               </div>
@@ -1375,7 +1435,7 @@ Return ONLY the JSON, nothing else.`;
                     </div>
                     <div className="flbl" style={{ marginBottom: 8 }}>Ingredients</div>
                     {newRecipe.ingredients.map((ing, idx) => (
-                      <div key={idx} style={{ display: "grid", gridTemplateColumns: "2fr 70px 110px 1.4fr auto", gap: 8, marginBottom: 8 }}>
+                      <div key={idx} className="ing-grid">
                         <input className="ginput" placeholder="Ingredient" value={ing.name} onChange={e => updateNewIngredient(idx, "name", e.target.value)} />
                         <input className="ginput" placeholder="Qty" value={ing.qty} onChange={e => updateNewIngredient(idx, "qty", e.target.value)} />
                         <select className="gsel" value={ing.unit || "—"} onChange={e => updateNewIngredient(idx, "unit", e.target.value)}>
@@ -1462,7 +1522,7 @@ Return ONLY the JSON, nothing else.`;
                 {/* Ingredients */}
                 <div className="flbl" style={{ marginBottom: 10 }}>Ingredients</div>
                 {pendingRecipe.ingredients.map((ing, idx) => (
-                  <div key={idx} style={{ display: "grid", gridTemplateColumns: "2fr 70px 110px 1.4fr auto", gap: 8, marginBottom: 8 }}>
+                  <div key={idx} className="ing-grid">
                     <input className="ginput" placeholder="Ingredient" value={ing.name}
                       onChange={e => updatePendingIngredient(idx, "name", e.target.value)} />
                     <input className="ginput" placeholder="Qty" value={ing.qty}
