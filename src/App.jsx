@@ -509,6 +509,7 @@ export default function App() {
   const [editingRecipe, setEditingRecipe] = useState(null);
   const [confirmDeleteRecipeId, setConfirmDeleteRecipeId] = useState(null);
   const [fbReady, setFbReady] = useState(false);
+  const fbReadyRef = useRef(false);
 
   // ── Firebase sync ─────────────────────────────────────────────────────────
   // Strategy: for each collection, attach an onSnapshot listener.
@@ -530,6 +531,7 @@ export default function App() {
         // Small delay so all setStates have settled before writes are allowed
         setTimeout(() => {
           COLLECTIONS.forEach(c => { skipWrite.current[c] = false; });
+          fbReadyRef.current = true;
           setFbReady(true);
         }, 100);
       }
@@ -573,34 +575,38 @@ export default function App() {
     // Safety fallback — if Firestore never responds (offline/blocked), unblock UI after 5s
     const fallback = setTimeout(() => {
       COLLECTIONS.forEach(c => { skipWrite.current[c] = false; });
+      fbReadyRef.current = true;
       setFbReady(true);
     }, 5000);
 
     return () => { unsubs.forEach(u => u()); clearTimeout(fallback); };
   }, []);
 
-  // ── Write helpers — only fire after initial load, skip on first render ────
+  // ── Write helpers ────────────────────────────────────────────────────────
+  // saveToFb is called explicitly whenever the user makes a change.
+  // We never write reactively from useEffect to avoid the race where
+  // default initial state overwrites Firestore data before listeners fire.
   const saveToFb = useCallback((docPath, data) => {
+    if (!fbReadyRef.current) return; // never write before all listeners have loaded
     setDoc(doc(db, ...docPath.split("/")), data)
       .catch(err => console.error("Firestore write error:", docPath, err));
   }, []);
-
-  useEffect(() => { if (!skipWrite.current.recipes)      saveToFb("household/recipes",      { list: recipes }); },      [recipes]);
-  useEffect(() => { if (!skipWrite.current.mealPlan)     saveToFb("household/mealPlan",     { plan: mealPlan }); },     [mealPlan]);
-  useEffect(() => { if (!skipWrite.current.nextMealPlan) saveToFb("household/nextMealPlan", { plan: nextMealPlan }); }, [nextMealPlan]);
-  useEffect(() => { if (!skipWrite.current.shoppingList) saveToFb("household/shoppingList", { list: shoppingList }); }, [shoppingList]);
-  useEffect(() => { if (!skipWrite.current.restaurants)  saveToFb("household/restaurants",  { list: restaurants }); },  [restaurants]);
-  useEffect(() => { if (!skipWrite.current.staples)      saveToFb("household/staples",      { list: staples }); },      [staples]);
-  useEffect(() => { if (!skipWrite.current.pastMealPlans) saveToFb("household/pastMealPlans", { list: pastMealPlans }); }, [pastMealPlans]);
 
   // Auto-purge checked items after 24h
   useEffect(() => {
     const interval = setInterval(() => {
       const now = Date.now();
-      setShoppingList(prev => prev.filter(i => !i.checkedAt || (now - i.checkedAt) < CHECK_TTL));
+      setShoppingList(prev => {
+        const filtered = prev.filter(i => !i.checkedAt || (now - i.checkedAt) < CHECK_TTL);
+        if (filtered.length !== prev.length) {
+          saveToFb("household/shoppingList", { list: filtered });
+          return filtered;
+        }
+        return prev;
+      });
     }, 60000);
     return () => clearInterval(interval);
-  }, []);
+  }, [saveToFb]);
 
   // Monday rotation: archive this week, move next week -> this week, clear next week, add shopping + staples
   useEffect(() => {
@@ -615,33 +621,28 @@ export default function App() {
     // Mark as done immediately to prevent any re-run in this session
     localStorage.setItem(MONDAY_KEY, todayStr);
 
-    // 1. Archive the outgoing week (keep last 4 weeks)
-    if (Object.keys(mealPlan).length > 0) {
-      // Label is the Monday that just started (today)
-      const weekLabel = today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-      const weekStart = today.toISOString().split("T")[0];
-      setPastMealPlans(prev => {
-        const entry = { weekLabel, weekStart, plan: mealPlan };
-        const updated = [entry, ...prev.filter(p => p.weekStart !== weekStart)];
-        return updated.slice(0, 4);
-      });
-    }
-
-    // 2. Promote next week's plan to this week
+    // 1+2. Promote next week's plan to this week (archive handled after shopping list build below)
     setMealPlan(nextMealPlan);
+    saveToFb("household/mealPlan", { plan: nextMealPlan });
     // 3. Clear next week's plan
     setNextMealPlan({});
+    saveToFb("household/nextMealPlan", { plan: {} });
     // 4. Add ingredients from the newly promoted plan + staples (only new items)
-    setShoppingList(prev => {
-      const withRecipes = buildShoppingList(nextMealPlan, recipes, prev);
-      const result = [...withRecipes];
-      staples.forEach(staple => {
-        if (!staple.name.trim()) return;
-        const alreadyThere = result.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
-        if (!alreadyThere) result.push({ ...staple, id: uid(), checkedAt: null });
-      });
-      return result;
+    const rotatedList = buildShoppingList(nextMealPlan, recipes, shoppingList);
+    const withStaples = [...rotatedList];
+    staples.forEach(staple => {
+      if (!staple.name.trim()) return;
+      const alreadyThere = withStaples.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
+      if (!alreadyThere) withStaples.push({ ...staple, id: uid(), checkedAt: null });
     });
+    setShoppingList(withStaples);
+    saveToFb("household/shoppingList", { list: withStaples });
+    // 5. Archive past weeks
+    const archivedPlans = Object.keys(mealPlan).length > 0
+      ? [{ weekLabel: today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }), weekStart: today.toISOString().split("T")[0], plan: mealPlan }, ...pastMealPlans.filter(p => p.weekStart !== today.toISOString().split("T")[0])].slice(0, 4)
+      : pastMealPlans;
+    setPastMealPlans(archivedPlans);
+    saveToFb("household/pastMealPlans", { list: archivedPlans });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fbReady]);
 
@@ -683,40 +684,43 @@ export default function App() {
   };
 
   const saveEdit = () => {
-    setCurrentMealPlan(draftPlan);
+    const savedPlan = draftPlan;
+
+    // Save the plan to state + Firestore
+    setCurrentMealPlan(savedPlan);
+    if (activeWeek === "this") {
+      saveToFb("household/mealPlan", { plan: savedPlan });
+    } else {
+      saveToFb("household/nextMealPlan", { plan: savedPlan });
+    }
 
     // Never touch the shopping list when editing next week —
     // those ingredients get added on Monday when the week rotates.
-    if (activeWeek === "next") {
-      setDraftPlan({});
-      setEditMode(false);
-      return;
-    }
+    if (activeWeek !== "next") {
+      // Only add ingredients for recipes newly added to the plan
+      const previousIds = recipeIdsInPlan(mealPlan);
+      const newIds = recipeIdsInPlan(savedPlan);
+      const addedIds = [...newIds].filter(id => !previousIds.has(id));
 
-    // For this week: only add ingredients for recipes that are NEW to the plan
-    // (not present in the previously saved plan). Already-planned recipes are
-    // already shopped for and shouldn't be re-added.
-    const previousIds = recipeIdsInPlan(mealPlan);
-    const newIds = recipeIdsInPlan(draftPlan);
-    const addedIds = [...newIds].filter(id => !previousIds.has(id));
-
-    if (addedIds.length > 0) {
-      // Build a minimal plan containing only the newly added recipe slots
-      const addedPlan = {};
-      Object.entries(draftPlan).forEach(([key, slot]) => {
-        if (!slot) return;
-        const relevant = (val, type) => type === "recipe" && val && val !== DINE_OUT_ID && addedIds.includes(val);
-        const hasAdded =
-          relevant(fieldVal(slot.entree), fieldType(slot.entree)) ||
-          relevant(fieldVal(slot.side),   fieldType(slot.side))   ||
-          relevant(fieldVal(slot.side2),  fieldType(slot.side2))  ||
-          (slot.extras || []).some(ex => {
-            const obj = typeof ex === "string" ? { type: "recipe", value: ex } : ex;
-            return obj.type === "recipe" && addedIds.includes(obj.value);
-          });
-        if (hasAdded) addedPlan[key] = slot;
-      });
-      setShoppingList(prev => buildShoppingList(addedPlan, recipes, prev));
+      if (addedIds.length > 0) {
+        const addedPlan = {};
+        Object.entries(savedPlan).forEach(([key, slot]) => {
+          if (!slot) return;
+          const relevant = (val, type) => type === "recipe" && val && val !== DINE_OUT_ID && addedIds.includes(val);
+          const hasAdded =
+            relevant(fieldVal(slot.entree), fieldType(slot.entree)) ||
+            relevant(fieldVal(slot.side),   fieldType(slot.side))   ||
+            relevant(fieldVal(slot.side2),  fieldType(slot.side2))  ||
+            (slot.extras || []).some(ex => {
+              const obj = typeof ex === "string" ? { type: "recipe", value: ex } : ex;
+              return obj.type === "recipe" && addedIds.includes(obj.value);
+            });
+          if (hasAdded) addedPlan[key] = slot;
+        });
+        const newShoppingList = buildShoppingList(addedPlan, recipes, shoppingList);
+        setShoppingList(newShoppingList);
+        saveToFb("household/shoppingList", { list: newShoppingList });
+      }
     }
 
     setDraftPlan({});
@@ -726,19 +730,32 @@ export default function App() {
   // Get display name for a slot field
   const recipeName = (id) => { if (!id) return null; if (id === DINE_OUT_ID) return null; const r = recipes.find(r => r.id === parseInt(id)); return r ? r.name : null; };
 
-  // Shopping list
-  const toggleCheck = (id) => {
-    setShoppingList(prev => prev.map(item => {
-      if (item.id !== id) return item;
-      const now = Date.now();
-      return { ...item, checkedAt: item.checkedAt ? null : now };
-    }));
+  // Shopping list — every mutation saves to Firestore immediately
+  const saveStaples = (newStaples) => {
+    setStaples(newStaples);
+    saveToFb("household/staples", { list: newStaples });
   };
-  const updateItem = (id, field, value) => setShoppingList(prev => prev.map(i => i.id === id ? { ...i, [field]: value } : i));
-  const removeItem = (id) => setShoppingList(prev => prev.filter(i => i.id !== id));
+  const saveList = (newList) => {
+    setShoppingList(newList);
+    saveToFb("household/shoppingList", { list: newList });
+  };
+  const toggleCheck = (id) => {
+    const now = Date.now();
+    const newList = shoppingList.map(item => {
+      if (item.id !== id) return item;
+      return { ...item, checkedAt: item.checkedAt ? null : now };
+    });
+    saveList(newList);
+  };
+  const updateItem = (id, field, value) => {
+    const newList = shoppingList.map(i => i.id === id ? { ...i, [field]: value } : i);
+    saveList(newList);
+  };
+  const removeItem = (id) => saveList(shoppingList.filter(i => i.id !== id));
   const addManualItem = () => {
     if (!newManualItem.name.trim()) return;
-    setShoppingList(prev => [...prev, { ...newManualItem, id: uid(), checkedAt: null }]);
+    const newList = [...shoppingList, { ...newManualItem, id: uid(), checkedAt: null }];
+    saveList(newList);
     setNewManualItem({ name: "", qty: "", unit: "", category: "" });
   };
 
@@ -861,14 +878,12 @@ export default function App() {
   const handleDrop = (e, targetId) => {
     e.preventDefault();
     if (dragItem === targetId) return;
-    setShoppingList(prev => {
-      const list = [...prev];
-      const from = list.findIndex(i => i.id === dragItem);
-      const to = list.findIndex(i => i.id === targetId);
-      const [moved] = list.splice(from, 1);
-      list.splice(to, 0, moved);
-      return list;
-    });
+    const list = [...shoppingList];
+    const from = list.findIndex(i => i.id === dragItem);
+    const to = list.findIndex(i => i.id === targetId);
+    const [moved] = list.splice(from, 1);
+    list.splice(to, 0, moved);
+    saveList(list);
     setDragItem(null); setDragOver(null);
   };
   const handleDragEnd = () => { setDragItem(null); setDragOver(null); };
@@ -1084,7 +1099,9 @@ Return ONLY the JSON, nothing else.`;
     setPendingRecipe(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== idx) }));
   const savePendingRecipe = () => {
     if (!pendingRecipe?.name?.trim()) return;
-    setRecipes(prev => [...prev, pendingRecipe]);
+    const newRecipes = [...recipes, pendingRecipe];
+    setRecipes(newRecipes);
+    saveToFb("household/recipes", { list: newRecipes });
     setCollapsedCards(p => ({ ...p, [pendingRecipe.id]: true }));
     setPendingRecipe(null);
   };
@@ -1100,7 +1117,9 @@ Return ONLY the JSON, nothing else.`;
     setEditingRecipe(prev => ({ ...prev, ingredients: prev.ingredients.filter((_, i) => i !== idx) }));
   const saveEditingRecipe = () => {
     if (!editingRecipe?.name?.trim()) return;
-    setRecipes(prev => prev.map(r => r.id === editingRecipe.id ? editingRecipe : r));
+    const newRecipes = recipes.map(r => r.id === editingRecipe.id ? editingRecipe : r);
+    setRecipes(newRecipes);
+    saveToFb("household/recipes", { list: newRecipes });
     setEditingRecipe(null);
     setConfirmDeleteRecipeId(null);
   };
@@ -1418,7 +1437,7 @@ Return ONLY the JSON, nothing else.`;
                   <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 3, color: "#5a4e30", textTransform: "uppercase", marginBottom: 10 }}>🍽 Favorite Restaurants</div>
                   <div style={{ marginBottom: 10 }}>
                     {restaurants.map(r => (
-                      <span key={r} className="rest-tag" title="Click to remove" onClick={() => setRestaurants(p => p.filter(x => x !== r))}>
+                      <span key={r} className="rest-tag" title="Click to remove" onClick={() => { const nr = restaurants.filter(x => x !== r); setRestaurants(nr); saveToFb("household/restaurants", { list: nr }); }}>
                         {r} &nbsp;✕
                       </span>
                     ))}
@@ -1426,8 +1445,8 @@ Return ONLY the JSON, nothing else.`;
                   <div style={{ display: "flex", gap: 8 }}>
                     <input className="ginput" placeholder="Add a restaurant..." value={newRestaurant}
                       onChange={e => setNewRestaurant(e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter" && newRestaurant.trim()) { setRestaurants(p => [...p, newRestaurant.trim()]); setNewRestaurant(""); }}} />
-                    <button className="btn-ghost" onClick={() => { if (newRestaurant.trim()) { setRestaurants(p => [...p, newRestaurant.trim()]); setNewRestaurant(""); }}}>+ Add</button>
+                      onKeyDown={e => { if (e.key === "Enter" && newRestaurant.trim()) { const nr = [...restaurants, newRestaurant.trim()]; setRestaurants(nr); saveToFb("household/restaurants", { list: nr }); setNewRestaurant(""); }}} />
+                    <button className="btn-ghost" onClick={() => { if (newRestaurant.trim()) { const nr = [...restaurants, newRestaurant.trim()]; setRestaurants(nr); saveToFb("household/restaurants", { list: nr }); setNewRestaurant(""); }}}>+ Add</button>
                   </div>
                 </div>
               </>
@@ -1821,7 +1840,9 @@ Return ONLY the JSON, nothing else.`;
                               <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 12px", border: "1px solid rgba(180,60,60,0.45)", background: "rgba(180,60,60,0.07)" }}>
                                 <span style={{ fontFamily: "'Cormorant Garamond',serif", fontStyle: "italic", fontSize: 13, color: "#e08080" }}>Delete this recipe?</span>
                                 <button className="btn-danger" style={{ padding: "5px 14px" }} onClick={() => {
-                                  setRecipes(p => p.filter(r => r.id !== editingRecipe.id));
+                                  const newRecipes = recipes.filter(r => r.id !== editingRecipe.id);
+                                  setRecipes(newRecipes);
+                                  saveToFb("household/recipes", { list: newRecipes });
                                   setEditingRecipe(null);
                                   setConfirmDeleteRecipeId(null);
                                 }}>Yes, delete</button>
@@ -1929,13 +1950,13 @@ Return ONLY the JSON, nothing else.`;
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
                   <button className="btn-ghost" onClick={() => setShowStaples(true)}>⭐ Staples</button>
                   <button className="btn-ghost" onClick={printShoppingList}>🖨 Print</button>
-                  <button className="btn-ghost" onClick={() => setShoppingList(p => p.map(i => ({ ...i, checkedAt: Date.now() })))}>Check All</button>
-                  <button className="btn-ghost" onClick={() => setShoppingList(p => p.map(i => ({ ...i, checkedAt: null })))}>Uncheck All</button>
+                  <button className="btn-ghost" onClick={() => { const l = shoppingList.map(i => ({ ...i, checkedAt: Date.now() })); saveList(l); }}>Check All</button>
+                  <button className="btn-ghost" onClick={() => { const l = shoppingList.map(i => ({ ...i, checkedAt: null })); saveList(l); }}>Uncheck All</button>
                   {!confirmClear
                     ? <button className="btn-danger" onClick={() => setConfirmClear(true)}>Clear</button>
                     : <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 1, color: "#c06060" }}>Clear all items?</span>
-                        <button className="btn-danger" onClick={() => { setShoppingList([]); setConfirmClear(false); }}>Yes, clear</button>
+                        <button className="btn-danger" onClick={() => { saveList([]); setConfirmClear(false); }}>Yes, clear</button>
                         <button className="btn-ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
                       </span>
                   }
@@ -2012,24 +2033,24 @@ Return ONLY the JSON, nothing else.`;
               <div key={staple.id} style={{ marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
                   <input className="ginput" value={staple.name} placeholder="Item name"
-                    onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                    onChange={e => saveStaples(staples.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
                     style={{ flex: 1, fontSize: 14 }} />
                   <input className="ginput" value={staple.qty} placeholder="Qty"
-                    onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, qty: e.target.value } : s))}
+                    onChange={e => saveStaples(staples.map((s, i) => i === idx ? { ...s, qty: e.target.value } : s))}
                     style={{ width: 46, textAlign: "center", fontSize: 14 }} />
                   <select className="gsel" value={staple.unit || ""}
-                    onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, unit: e.target.value } : s))}
+                    onChange={e => saveStaples(staples.map((s, i) => i === idx ? { ...s, unit: e.target.value } : s))}
                     style={{ width: 68, fontSize: 12, padding: "6px 4px" }}>
                     <option value="">—</option>
                     {UNITS.filter(u => u !== "—").map(u => <option key={u}>{u}</option>)}
                   </select>
                   <button className="btn-danger" style={{ padding: "5px 9px", fontSize: 13, flexShrink: 0 }}
-                    onClick={() => setStaples(p => p.filter((_, i) => i !== idx))}>✕</button>
+                    onClick={() => saveStaples(staples.filter((_, i) => i !== idx))}>✕</button>
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <span style={{ fontFamily: "'Cinzel',serif", fontSize: 7, letterSpacing: 1.5, color: "#6a5830", textTransform: "uppercase", whiteSpace: "nowrap" }}>Aisle:</span>
                   <select className="gsel" value={staple.category || ""}
-                    onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, category: e.target.value } : s))}
+                    onChange={e => saveStaples(staples.map((s, i) => i === idx ? { ...s, category: e.target.value } : s))}
                     style={{ flex: 1, fontSize: 12, padding: "4px 6px" }}>
                     <option value="">— select aisle —</option>
                     {STORE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
@@ -2041,20 +2062,18 @@ Return ONLY the JSON, nothing else.`;
             {/* Add new staple */}
             <div style={{ borderTop: "1px solid rgba(180,150,60,0.15)", marginTop: 14, paddingTop: 14 }}>
               <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 2, color: "#907848", textTransform: "uppercase", marginBottom: 8 }}>Add Item</div>
-              <StaplesAddRow onAdd={(item) => setStaples(p => [...p, { ...item, id: uid() }])} UNITS={UNITS} />
+              <StaplesAddRow onAdd={(item) => saveStaples([...staples, { ...item, id: uid() }])} UNITS={UNITS} />
             </div>
 
             <div style={{ display: "flex", gap: 8, marginTop: 18, flexWrap: "wrap" }}>
               <button className="btn-ghost" onClick={() => {
-                setShoppingList(prev => {
-                  const updated = [...prev];
-                  staples.forEach(staple => {
-                    if (!staple.name.trim()) return;
-                    const alreadyThere = updated.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
-                    if (!alreadyThere) updated.push({ ...staple, id: uid(), checkedAt: null });
-                  });
-                  return updated;
+                const updated = [...shoppingList];
+                staples.forEach(staple => {
+                  if (!staple.name.trim()) return;
+                  const alreadyThere = updated.some(i => i.name.toLowerCase() === staple.name.toLowerCase());
+                  if (!alreadyThere) updated.push({ ...staple, id: uid(), checkedAt: null });
                 });
+                saveList(updated);
                 setShowStaples(false);
               }}>Add to List Now</button>
               <button className="btn-save" onClick={() => setShowStaples(false)}>Done</button>
