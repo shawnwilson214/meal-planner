@@ -495,6 +495,7 @@ export default function App() {
   const [newManualItem, setNewManualItem] = useState({ name: "", qty: "", unit: "", category: "" });
   const [staples, setStaples] = useState(STAPLES_LIST.map(s => ({ ...s, id: uid() })));
   const [showStaples, setShowStaples] = useState(false);
+  const [confirmClear, setConfirmClear] = useState(false);
   const imageInputRef = useRef();
   const [imagePreview, setImagePreview] = useState(null);
   const [imageLoading, setImageLoading] = useState(false);
@@ -737,17 +738,14 @@ export default function App() {
       `).join("")}
       <div class="footer">The Wilson's &nbsp;&diams;&nbsp; Weekly Provisions</div>
     </body></html>`;
-    const iframe = document.createElement("iframe");
-    iframe.style.display = "none";
-    document.body.appendChild(iframe);
-    iframe.contentDocument.open();
-    iframe.contentDocument.write(html);
-    iframe.contentDocument.close();
-    iframe.contentWindow.focus();
-    setTimeout(() => {
-      iframe.contentWindow.print();
-      setTimeout(() => document.body.removeChild(iframe), 1000);
-    }, 600);
+    const win = window.open("", "_blank", "width=900,height=700");
+    win.document.open();
+    win.document.write(html);
+    win.document.close();
+    // Wait for fonts and layout to fully render before printing
+    win.onload = () => setTimeout(() => { win.focus(); win.print(); }, 400);
+    // Fallback in case onload already fired
+    setTimeout(() => { if (!win.closed) { win.focus(); win.print(); } }, 1200);
   };
 
   const printRecipes = () => {
@@ -1879,11 +1877,21 @@ Return ONLY the JSON, nothing else.`;
             </div>
 
             {shoppingList.length > 0 && (
-              <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-                <button className="btn-ghost" onClick={() => setShowStaples(true)}>⭐ Staples</button>
-                <button className="btn-ghost" onClick={printShoppingList}>🖨 Print</button>
-                <button className="btn-ghost" onClick={() => setShoppingList(p => p.map(i => ({ ...i, checkedAt: null })))}>Uncheck All</button>
-                <button className="btn-danger" onClick={() => setShoppingList([])}>Clear</button>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                  <button className="btn-ghost" onClick={() => setShowStaples(true)}>⭐ Staples</button>
+                  <button className="btn-ghost" onClick={printShoppingList}>🖨 Print</button>
+                  <button className="btn-ghost" onClick={() => setShoppingList(p => p.map(i => ({ ...i, checkedAt: Date.now() })))}>Check All</button>
+                  <button className="btn-ghost" onClick={() => setShoppingList(p => p.map(i => ({ ...i, checkedAt: null })))}>Uncheck All</button>
+                  {!confirmClear
+                    ? <button className="btn-danger" onClick={() => setConfirmClear(true)}>Clear</button>
+                    : <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 1, color: "#c06060" }}>Clear all items?</span>
+                        <button className="btn-danger" onClick={() => { setShoppingList([]); setConfirmClear(false); }}>Yes, clear</button>
+                        <button className="btn-ghost" onClick={() => setConfirmClear(false)}>Cancel</button>
+                      </span>
+                  }
+                </div>
               </div>
             )}
             {shoppingList.length === 0 && (
@@ -1953,21 +1961,32 @@ Return ONLY the JSON, nothing else.`;
 
             {/* Existing staples — all fields editable */}
             {staples.map((staple, idx) => (
-              <div key={staple.id} style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-                <input className="ginput" value={staple.name} placeholder="Item name"
-                  onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
-                  style={{ flex: 1, fontSize: 14 }} />
-                <input className="ginput" value={staple.qty} placeholder="Qty"
-                  onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, qty: e.target.value } : s))}
-                  style={{ width: 46, textAlign: "center", fontSize: 14 }} />
-                <select className="gsel" value={staple.unit || ""}
-                  onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, unit: e.target.value } : s))}
-                  style={{ width: 68, fontSize: 12, padding: "6px 4px" }}>
-                  <option value="">—</option>
-                  {UNITS.filter(u => u !== "—").map(u => <option key={u}>{u}</option>)}
-                </select>
-                <button className="btn-danger" style={{ padding: "5px 9px", fontSize: 13, flexShrink: 0 }}
-                  onClick={() => setStaples(p => p.filter((_, i) => i !== idx))}>✕</button>
+              <div key={staple.id} style={{ marginBottom: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 5 }}>
+                  <input className="ginput" value={staple.name} placeholder="Item name"
+                    onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, name: e.target.value } : s))}
+                    style={{ flex: 1, fontSize: 14 }} />
+                  <input className="ginput" value={staple.qty} placeholder="Qty"
+                    onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, qty: e.target.value } : s))}
+                    style={{ width: 46, textAlign: "center", fontSize: 14 }} />
+                  <select className="gsel" value={staple.unit || ""}
+                    onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, unit: e.target.value } : s))}
+                    style={{ width: 68, fontSize: 12, padding: "6px 4px" }}>
+                    <option value="">—</option>
+                    {UNITS.filter(u => u !== "—").map(u => <option key={u}>{u}</option>)}
+                  </select>
+                  <button className="btn-danger" style={{ padding: "5px 9px", fontSize: 13, flexShrink: 0 }}
+                    onClick={() => setStaples(p => p.filter((_, i) => i !== idx))}>✕</button>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontFamily: "'Cinzel',serif", fontSize: 7, letterSpacing: 1.5, color: "#6a5830", textTransform: "uppercase", whiteSpace: "nowrap" }}>Aisle:</span>
+                  <select className="gsel" value={staple.category || ""}
+                    onChange={e => setStaples(p => p.map((s, i) => i === idx ? { ...s, category: e.target.value } : s))}
+                    style={{ flex: 1, fontSize: 12, padding: "4px 6px" }}>
+                    <option value="">— select aisle —</option>
+                    {STORE_CATEGORIES.map(c => <option key={c}>{c}</option>)}
+                  </select>
+                </div>
               </div>
             ))}
 
