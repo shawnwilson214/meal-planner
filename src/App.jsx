@@ -163,11 +163,17 @@ const buildShoppingList = (mealPlan, recipes, existing = []) => {
       if (id) addIngredients(id);
     });
   });
-  // Merge with existing to preserve checkedAt timestamps and manual items
-  return Object.values(map).map(item => {
-    const prev = existing.find(e => e.name.toLowerCase() === item.name.toLowerCase());
-    return prev ? { ...item, id: prev.id, checkedAt: prev.checkedAt } : item;
+  // Start from the full existing list so nothing already on the list is lost.
+  // Only add genuinely new ingredients from the recipe map on top.
+  const merged = [...existing];
+  Object.values(map).forEach(newItem => {
+    const idx = merged.findIndex(e => e.name.toLowerCase() === newItem.name.toLowerCase());
+    if (idx === -1) {
+      merged.push(newItem);
+    }
+    // If the item is already present (staple, manual, or previous recipe add) leave it untouched.
   });
+  return merged;
 };
 
 const css = `
@@ -322,7 +328,8 @@ const css = `
   .week-tab:not(:last-child){border-right:none;}
   .week-tab.active{background:rgba(180,150,60,0.12);color:#f5d060;border-color:rgba(180,150,60,0.5);}
   .week-tab:hover:not(.active){color:#e0b848;border-color:rgba(180,150,60,0.4);}
-  .week-tab.past{color:#7a6840;font-size:7px;letter-spacing:1.5px;}
+  .week-tab.past{color:#6a5830;font-size:7px;letter-spacing:1.5px;border-color:rgba(180,150,60,0.15);}
+  .week-tab.past.active{color:#f5d060;background:rgba(180,150,60,0.10);border-color:rgba(180,150,60,0.4);}
   .recipe-filter-bar{display:flex;align-items:center;gap:10px;margin-bottom:18px;padding:10px 16px;border:1px solid rgba(180,150,60,0.18);background:rgba(180,150,60,0.04);flex-wrap:wrap;}
   .filter-btn{font-family:'Cinzel',serif;font-size:8px;letter-spacing:2px;text-transform:uppercase;padding:6px 16px;border:1px solid rgba(180,150,60,0.25);background:transparent;color:#a09060;cursor:pointer;transition:all 0.2s;}
   .filter-btn.active{background:rgba(180,150,60,0.14);color:#f5d060;border-color:rgba(180,150,60,0.55);}
@@ -478,6 +485,7 @@ export default function App() {
   const [mealPlan, setMealPlan] = useState({});
   const [nextMealPlan, setNextMealPlan] = useState({});
   const [pastMealPlans, setPastMealPlans] = useState([]); // [{weekLabel, weekStart, plan}]
+  const [selectedPastWeek, setSelectedPastWeek] = useState(null);
   const [draftPlan, setDraftPlan] = useState({});
   const [recipeFilter, setRecipeFilter] = useState("all");
   const [shoppingList, setShoppingList] = useState([]);
@@ -650,10 +658,7 @@ export default function App() {
   const removeDraftExtra = (day, meal, idx) =>
     setDraftPlan(prev => { const k=`${day}-${meal}`; const s=getDraftSlot(day,meal); return {...prev,[k]:{...s,extras:s.extras.filter((_,i)=>i!==idx)}}; });
 
-  const isPastWeek = activeWeek.startsWith("past-");
-  const currentMealPlan = isPastWeek
-    ? (pastMealPlans.find(p => p.weekStart === activeWeek.replace("past-", ""))?.plan || {})
-    : activeWeek === "this" ? mealPlan : nextMealPlan;
+  const currentMealPlan = activeWeek === "this" ? mealPlan : nextMealPlan;
   const setCurrentMealPlan = activeWeek === "this" ? setMealPlan : setNextMealPlan;
 
   const enterEdit = () => { setDraftPlan(JSON.parse(JSON.stringify(currentMealPlan))); setEditMode(true); };
@@ -1290,20 +1295,13 @@ Return ONLY the JSON, nothing else.`;
         {/* ── PLANNER ── */}
         {tab === "planner" && (
           <div>
-            {/* Week toggle */}
+            {/* Week toggle — This Week / Next Week only */}
             {!editMode && (
-              <div className="menu-week-toggle" style={{ flexWrap: "wrap" }}>
+              <div className="menu-week-toggle">
                 <button className={`week-tab ${activeWeek === "this" ? "active" : ""}`}
                   onClick={() => setActiveWeek("this")}>This Week</button>
                 <button className={`week-tab ${activeWeek === "next" ? "active" : ""}`}
                   onClick={() => setActiveWeek("next")}>Next Week</button>
-                {pastMealPlans.map(p => (
-                  <button key={p.weekStart}
-                    className={`week-tab past ${activeWeek === `past-${p.weekStart}` ? "active" : ""}`}
-                    onClick={() => setActiveWeek(`past-${p.weekStart}`)}>
-                    Week of {p.weekLabel}
-                  </button>
-                ))}
               </div>
             )}
 
@@ -1311,15 +1309,10 @@ Return ONLY the JSON, nothing else.`;
             <div className={`edit-bar ${editMode ? "edit-mode-strip" : ""}`}>
               <div>
                 <div className="edit-bar-title">
-                  {editMode ? "✏ Edit Mode"
-                    : isPastWeek
-                      ? `◆ Week of ${pastMealPlans.find(p => p.weekStart === activeWeek.replace("past-",""))?.weekLabel || ""}`
-                      : `◆ ${activeWeek === "this" ? "This Week's" : "Next Week's"} Menu`}
+                  {editMode ? "✏ Edit Mode" : `◆ ${activeWeek === "this" ? "This Week's" : "Next Week's"} Menu`}
                 </div>
                 <div className="edit-bar-note">
-                  {editMode ? "Make your selections, then save to update provisions."
-                    : isPastWeek ? "Past menus are read-only."
-                    : "Click Edit Menu to plan your week."}
+                  {editMode ? "Make your selections, then save to update provisions." : "Click Edit Menu to plan your week."}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 10 }}>
@@ -1328,7 +1321,7 @@ Return ONLY the JSON, nothing else.`;
                     <button className="btn-ghost" onClick={cancelEdit}>Cancel</button>
                     <button className="btn-save" onClick={saveEdit}>Save &amp; Update List</button>
                   </>
-                ) : !isPastWeek && (
+                ) : (
                   <button className="btn-gold" onClick={enterEdit}>Edit Menu</button>
                 )}
               </div>
@@ -1393,6 +1386,103 @@ Return ONLY the JSON, nothing else.`;
                 </div>
               </>
             )}
+
+            {/* ── PAST MENUS ── */}
+            {!editMode && pastMealPlans.length > 0 && (
+              <div style={{ marginTop: 40 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
+                  <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,transparent,rgba(180,150,60,0.25))" }} />
+                  <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 4, color: "#7a6840", textTransform: "uppercase" }}>Past Menus</div>
+                  <div style={{ flex: 1, height: 1, background: "linear-gradient(90deg,rgba(180,150,60,0.25),transparent)" }} />
+                </div>
+
+                {/* Past week selector tabs */}
+                <div style={{ display: "flex", gap: 0, marginBottom: 20, flexWrap: "wrap", justifyContent: "center" }}>
+                  {pastMealPlans.map(p => (
+                    <button key={p.weekStart}
+                      className={`week-tab past ${selectedPastWeek === p.weekStart ? "active" : ""}`}
+                      onClick={() => setSelectedPastWeek(prev => prev === p.weekStart ? null : p.weekStart)}>
+                      Week of {p.weekLabel}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Past week read-only menu */}
+                {selectedPastWeek && (() => {
+                  const pastEntry = pastMealPlans.find(p => p.weekStart === selectedPastWeek);
+                  if (!pastEntry) return null;
+                  return (
+                    <div>
+                      <div style={{ fontFamily: "'Cinzel',serif", fontSize: 8, letterSpacing: 3, color: "#907848", textTransform: "uppercase", marginBottom: 12, textAlign: "center" }}>
+                        ◆ Week of {pastEntry.weekLabel}
+                      </div>
+                      <div className="menu-view" style={{ opacity: 0.85 }}>
+                        {DAYS.map(day => {
+                          const meals = getMealsForDay(day);
+                          return (
+                            <div key={day} className="menu-day">
+                              <div className="menu-day-header">
+                                <div className="menu-day-name">{day}</div>
+                                <div className="menu-meals">
+                                  {meals.map(meal => {
+                                    const slot = (pastEntry.plan || {})[`${day}-${meal}`] || emptySlot();
+                                    const entreeField = resolveField(slot.entree);
+                                    const sideField = resolveField(slot.side);
+                                    const side2Field = resolveField(slot.side2);
+                                    const dineOut = entreeField.value === DINE_OUT_ID;
+                                    const getDisplayName = (field) => {
+                                      if (!field.value) return null;
+                                      if (field.type === "text") return field.value.trim() || null;
+                                      return recipeName(field.value);
+                                    };
+                                    const entreeName = dineOut ? null : getDisplayName(entreeField);
+                                    const sideName = getDisplayName(sideField);
+                                    const side2Name = getDisplayName(side2Field);
+                                    const extraItems = (slot.extras || []).map(ex => {
+                                      if (!ex) return null;
+                                      const obj = typeof ex === "string" ? { type: "recipe", value: ex } : ex;
+                                      if (obj.type === "text") return obj.value?.trim() ? { label: obj.value.trim(), isText: true } : null;
+                                      const n = recipeName(obj.value);
+                                      return n ? { label: n, isText: false } : null;
+                                    }).filter(Boolean);
+                                    const isDinner = meal === "Dinner";
+                                    const hasContent = dineOut || entreeName || sideName || side2Name || extraItems.length;
+                                    return (
+                                      <div className="menu-meal" key={meal}>
+                                        <div className="menu-meal-title">{meal}</div>
+                                        <div className="menu-meal-content">
+                                          {!hasContent ? <div className="menu-empty">—</div> : (
+                                            <>
+                                              {dineOut ? (
+                                                <div className="menu-entry">
+                                                  <div className="menu-entry-name dine">🍽 {slot.restaurant || "Dining Out"}</div>
+                                                </div>
+                                              ) : (
+                                                <>
+                                                  {entreeName && <div className="menu-entry"><div className="menu-entry-course">Entrée</div><div className="menu-entry-name">{entreeName}</div></div>}
+                                                  {isDinner && sideName && <div className="menu-entry"><div className="menu-entry-course">Side 1</div><div className="menu-entry-name">{sideName}</div></div>}
+                                                  {isDinner && side2Name && <div className="menu-entry"><div className="menu-entry-course">Side 2</div><div className="menu-entry-name">{side2Name}</div></div>}
+                                                  {extraItems.map((item, i) => <div key={i} className="menu-entry"><div className="menu-entry-course">{item.isText ? "Note" : "Extra"}</div><div className="menu-entry-name">{item.label}</div></div>)}
+                                                </>
+                                              )}
+                                            </>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+
           </div>
         )}
 
