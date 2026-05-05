@@ -612,17 +612,18 @@ export default function App() {
     const last = localStorage.getItem(MONDAY_KEY);
     if (last === todayStr) return; // already ran today
 
+    // Mark as done immediately to prevent any re-run in this session
+    localStorage.setItem(MONDAY_KEY, todayStr);
+
     // 1. Archive the outgoing week (keep last 4 weeks)
     if (Object.keys(mealPlan).length > 0) {
-      // Label is the Monday date of the week that's ending (7 days ago)
-      const prevMonday = new Date(today);
-      prevMonday.setDate(today.getDate() - 7);
-      const weekLabel = prevMonday.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-      const weekStart = prevMonday.toISOString().split("T")[0];
+      // Label is the Monday that just started (today)
+      const weekLabel = today.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const weekStart = today.toISOString().split("T")[0];
       setPastMealPlans(prev => {
         const entry = { weekLabel, weekStart, plan: mealPlan };
         const updated = [entry, ...prev.filter(p => p.weekStart !== weekStart)];
-        return updated.slice(0, 4); // keep only 4 weeks of history
+        return updated.slice(0, 4);
       });
     }
 
@@ -630,7 +631,7 @@ export default function App() {
     setMealPlan(nextMealPlan);
     // 3. Clear next week's plan
     setNextMealPlan({});
-    // 4. Build shopping list from newly promoted plan, then append staples
+    // 4. Add ingredients from the newly promoted plan + staples (only new items)
     setShoppingList(prev => {
       const withRecipes = buildShoppingList(nextMealPlan, recipes, prev);
       const result = [...withRecipes];
@@ -641,8 +642,6 @@ export default function App() {
       });
       return result;
     });
-
-    localStorage.setItem(MONDAY_KEY, todayStr);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fbReady]);
 
@@ -665,12 +664,61 @@ export default function App() {
   const enterEdit = () => { setDraftPlan(JSON.parse(JSON.stringify(currentMealPlan))); setEditMode(true); };
   const cancelEdit = () => { setDraftPlan({}); setEditMode(false); };
 
+  // Collect all unique recipe IDs referenced in a plan object
+  const recipeIdsInPlan = (plan) => {
+    const ids = new Set();
+    Object.values(plan).forEach(slot => {
+      if (!slot) return;
+      const entreeVal = fieldVal(slot.entree);
+      if (entreeVal && entreeVal !== DINE_OUT_ID && fieldType(slot.entree) === "recipe") ids.add(entreeVal);
+      if (fieldVal(slot.side) && fieldType(slot.side) === "recipe") ids.add(fieldVal(slot.side));
+      if (fieldVal(slot.side2) && fieldType(slot.side2) === "recipe") ids.add(fieldVal(slot.side2));
+      (slot.extras || []).forEach(ex => {
+        if (!ex) return;
+        const obj = typeof ex === "string" ? { type: "recipe", value: ex } : ex;
+        if (obj.type === "recipe" && obj.value) ids.add(obj.value);
+      });
+    });
+    return ids;
+  };
+
   const saveEdit = () => {
     setCurrentMealPlan(draftPlan);
-    // Only rebuild shopping list from this week's plan
-    const planForShopping = activeWeek === "this" ? draftPlan : mealPlan;
-    const newList = buildShoppingList(planForShopping, recipes, shoppingList);
-    setShoppingList(newList);
+
+    // Never touch the shopping list when editing next week —
+    // those ingredients get added on Monday when the week rotates.
+    if (activeWeek === "next") {
+      setDraftPlan({});
+      setEditMode(false);
+      return;
+    }
+
+    // For this week: only add ingredients for recipes that are NEW to the plan
+    // (not present in the previously saved plan). Already-planned recipes are
+    // already shopped for and shouldn't be re-added.
+    const previousIds = recipeIdsInPlan(mealPlan);
+    const newIds = recipeIdsInPlan(draftPlan);
+    const addedIds = [...newIds].filter(id => !previousIds.has(id));
+
+    if (addedIds.length > 0) {
+      // Build a minimal plan containing only the newly added recipe slots
+      const addedPlan = {};
+      Object.entries(draftPlan).forEach(([key, slot]) => {
+        if (!slot) return;
+        const relevant = (val, type) => type === "recipe" && val && val !== DINE_OUT_ID && addedIds.includes(val);
+        const hasAdded =
+          relevant(fieldVal(slot.entree), fieldType(slot.entree)) ||
+          relevant(fieldVal(slot.side),   fieldType(slot.side))   ||
+          relevant(fieldVal(slot.side2),  fieldType(slot.side2))  ||
+          (slot.extras || []).some(ex => {
+            const obj = typeof ex === "string" ? { type: "recipe", value: ex } : ex;
+            return obj.type === "recipe" && addedIds.includes(obj.value);
+          });
+        if (hasAdded) addedPlan[key] = slot;
+      });
+      setShoppingList(prev => buildShoppingList(addedPlan, recipes, prev));
+    }
+
     setDraftPlan({});
     setEditMode(false);
   };
